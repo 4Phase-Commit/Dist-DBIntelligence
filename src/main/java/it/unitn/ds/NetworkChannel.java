@@ -28,7 +28,7 @@ public class NetworkChannel extends AbstractActor {
     private final int maxLatency;
     private final Random rnd;
 
-    // Queue of (message, originalSender) pairs waiting to be delivered
+    // Queue of (message, originalSender) pairs waiting to be delivered. store all msg in the link (persistent like)
     private final Queue<Object[]> queue = new LinkedList<>();
     private boolean delivering = false;
 
@@ -67,7 +67,7 @@ public class NetworkChannel extends AbstractActor {
         }
         Object msg = entry[0];
         ActorRef originalSender = (ActorRef) entry[1];
-        destination.tell(msg, originalSender);
+        destination.tell(msg, originalSender); // i cannot put self because this ActorRef is just a virtual channel
 
         if (!queue.isEmpty()) {
             scheduleNextDelivery();
@@ -76,7 +76,7 @@ public class NetworkChannel extends AbstractActor {
         }
     }
 
-    private void scheduleNextDelivery() {
+    private void scheduleNextDelivery() { // simulate network latency
         delivering = true;
         int delay = minLatency + rnd.nextInt(maxLatency - minLatency);
         getContext().system().scheduler().scheduleOnce(

@@ -22,7 +22,8 @@ public class Client extends AbstractClient {
 
     @Override
     public void sendRead(ActorRef replica, int index) {
-        // TODO: implement        
+        // TODO: implement
+
     }
 
     @Override

@@ -1,10 +1,7 @@
 package it.unitn.ds;
 
 import java.io.Serializable;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
@@ -94,11 +91,11 @@ public abstract class AbstractReplica extends AbstractActor {
     // =================================================================================
 
     void tell(Serializable m, ActorRef dst) {
-        // Lazily create one channel actor per destination
+        // Lazily create one channel actor per destination it will also add the value to the map
         ActorRef channel = channels.computeIfAbsent(dst, d -> getContext().actorOf(
                 NetworkChannel.props(d, getMinLatency(), getMaxLatency()),
                 "channel_to_" + d.path().name()));
-        channel.tell(m, getSelf());
+        channel.tell(m, getSelf()); // pass the message on the channel
     }
 
     // =================================================================================
@@ -321,8 +318,238 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
+    // custom messages
+    public static class HeartBeat implements Serializable {
+        public final int replicaId;
+        public final int currentCoordinator;
+
+        public HeartBeat(int replicaId,int currentCoordinator) {
+            this.replicaId = replicaId;
+            this.currentCoordinator = currentCoordinator;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof HeartBeat) {
+                HeartBeat o = (HeartBeat) obj;
+                return o.replicaId == this.replicaId && o.currentCoordinator == this.currentCoordinator;
+            }
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return "HeartBeat(ToReplica=" + replicaId + ", currentCordinator=" + currentCoordinator + ")";
+        }
+    }
+
+    public static class SendHeartBeat implements Serializable {
+        public final ActorRef replica;
+        public final int replicaId;
+        public final int currentCoordinator;
+
+        public SendHeartBeat(int replicaId,ActorRef replica,int currentCoordinator) {
+            this.replicaId = replicaId;
+            this.replica = replica;
+            this.currentCoordinator = currentCoordinator;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof HeartBeat) {
+                SendHeartBeat o = (SendHeartBeat) obj;
+                return o.replica == this.replica && o.replicaId == this.replicaId && o.currentCoordinator == this.currentCoordinator;
+            }
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return "SendHeartBeat(ToReplica=" + replica + ", currentCordinator=" + currentCoordinator + ")";
+        }
+    }
+
+    public static class CoordinatorCrashed implements Serializable {
+        public final int currentCoordinator;
+
+        public CoordinatorCrashed(int currentCoordinator) {
+            this.currentCoordinator = currentCoordinator;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof CoordinatorCrashed) {
+                CoordinatorCrashed o = (CoordinatorCrashed) obj;
+                return o.currentCoordinator == this.currentCoordinator;
+            }
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return "HeartBeatTimeout(currentCordinator=" + currentCoordinator + ")";
+        }
+    }
+
+    public static class Election implements Serializable {
+        public final Map<Integer, LastUpdate> updates;
+        public final int toReplica;
+        public  final int id;
+
+        public Election(Map<Integer, LastUpdate> updates,int toReplica,int id) {
+
+            this.updates = updates;
+            this.toReplica = toReplica;
+            this.id = id;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof Election) {
+                Election o = (Election) obj;
+                return o.updates == this.updates;
+            }
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return "Election(updates=" + updates + ")";
+        }
+    }
+
+    public static class LastUpdate implements Serializable,Comparable<LastUpdate> {
+        public final int epoch;
+        public final int epochSEQN;
+
+        public LastUpdate(int epoch, int epochSEQN) {
+            this.epoch= epoch;
+            this.epochSEQN = epochSEQN;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof LastUpdate) {
+                LastUpdate o = (LastUpdate) obj;
+                return o.epoch == this.epoch && o.epochSEQN == this.epochSEQN;
+            }
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return "LastUpdate(" + " epoch=" + epoch + " SEQN=" + epochSEQN +")";
+        }
+
+        @Override
+        public int compareTo(LastUpdate o) {
+            if (this.equals(o)) {
+                return 0;
+            }
+            if (this.epoch > o.epoch) {
+                return 1;
+            } else if (this.epochSEQN > o.epochSEQN) {
+                return 1;
+            } else {
+                return -1;
+            }
+        }
+    }
+
+    public static class ElectionACK implements Serializable {
+        @Override
+        public String toString() {
+            return "ElectionACK";
+        }
+    }
+
+    public static class ElectionTimeout implements Serializable {
+        @Override
+        public String toString() {
+            return "ElectionTimeout";
+        }
+    }
+
+    public static class ElectionACKTimeout implements Serializable {
+        public final Election currentElection;
+
+        public ElectionACKTimeout(Election currentElection) {
+            this.currentElection = currentElection;
+        }
+
+        @Override
+        public String toString() {
+            return "ElectionACKTimeout";
+        }
+    }
+
+    public static class Update implements Serializable {
+        public final AbstractClient.WriteRequest update;
+
+        public Update(AbstractClient.WriteRequest update) {
+            this.update = update;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof Update) {
+                Update o = (Update) obj;
+                return o.update.equals(this.update);
+            }
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return "Update(updates=" + update + ")";
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(update);
+        }
+    }
+
+    public static class Synchronization implements Serializable {
+        public final Queue<Update> updates;
+        public final int newCoordinator;
+
+        public Synchronization(Queue<Update> updates,int newCoordinator) {
+            this.updates = updates;
+            this.newCoordinator = newCoordinator;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof Synchronization) {
+                Synchronization o = (Synchronization) obj;
+                return o.updates == this.updates;
+            }
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return "Synchronization(updates=" + updates + ")";
+        }
+    }
+
+    public static class UpdateACK implements Serializable {
+        @Override
+        public String toString() {
+            return "UpdateACK";
+        }
+    }
+
+    public static class WriteOK implements Serializable {
+        @Override
+        public String toString() {
+            return "WriteOK";
+        }
+    }
+
     // =================================================================================
-    // Mandatory API Callbacks
+    // Mandatory API Callbacks for Test purposes
     // =================================================================================
 
     /**
@@ -370,7 +597,7 @@ public abstract class AbstractReplica extends AbstractActor {
     private final void onCrashMsg(Crash crash) {
         crash(crash);
         log("CRASHED: " + crash.type + " (" + crash.after_n_messages_of_type + ")");
-        listener.ifPresent(l -> l.tell(crash, getSelf()));
+        listener.ifPresent(l -> l.tell(crash, getSelf())); // testing purpose
     }
 
     private final void onInitSystem(InitSystem msg) {
