@@ -8,8 +8,8 @@ import scala.concurrent.duration.Duration;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Replica extends AbstractReplica {
@@ -19,19 +19,22 @@ public class Replica extends AbstractReplica {
     public static final int ELECTION_TIMEOUT_MULTIPLIER = 100;
     public static final int REQUESTFORWARD_TIMEOUT = 200;
     public static final int WRITEOK_TIMEOUT = 200;
+    public static final int SYNCHRONIZAZION_TIMEOUT = 500;
 
     private boolean amICoordinator;
     private int currentCoordinator;
     private TreeMap<Integer, ActorRef> replicas;
     private Map<Integer, Cancellable> heartbeatSchedulers;
-    private boolean isElectingStarted;
+    private boolean isElectionFirstPhase;
     private Cancellable heartbeatExpireTimer;
     private Cancellable electionTimeout;
     private final Queue<Cancellable> fowardTimeout;
     private final Queue<Cancellable> writeokTimeout;
     private final Queue<Cancellable> electionAckExpireTimer;
     private int msgBeforeCrash;
-    private Queue<Update> updates;
+    private Queue<Serializable> requests;
+    private Queue<Update> pendingUpdates;
+    private Stack<AppliedUpdate> history;
     private int epoch;
     private int updateSEQN;
     private boolean hasCrashed;
@@ -46,7 +49,9 @@ public class Replica extends AbstractReplica {
         // TODO: implement
         epoch = 0;
         updateSEQN = 0;
-        updates = new ArrayDeque<>();
+        requests = new ArrayDeque<>();
+        history = new Stack<>();
+        pendingUpdates = new ArrayDeque<>();
         electionAckExpireTimer = new ArrayDeque<>();
         fowardTimeout = new ArrayDeque<>();
         writeokTimeout = new ArrayDeque<>();
@@ -96,10 +101,11 @@ public class Replica extends AbstractReplica {
     }
 
     private void BeginHeartBeat() {
+        Logger.debug("Begin Heartbeat");
         for (Map.Entry<Integer, ActorRef> entry : replicas.entrySet()) {
             if (entry.getKey()==id) continue;
             Cancellable scheduler = getContext().system().scheduler().scheduleWithFixedDelay(
-                    Duration.create(1, TimeUnit.SECONDS),
+                    Duration.create(0, TimeUnit.SECONDS),
                     Duration.create(HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS),
                     getSelf(),
                     new SendHeartBeat(entry.getKey(), entry.getValue(),id),
@@ -110,6 +116,7 @@ public class Replica extends AbstractReplica {
     }
 
     private void StopHeartBeat() {
+        Logger.debug("Stop Heartbeat");
         for (Map.Entry<Integer, Cancellable> entry : heartbeatSchedulers.entrySet()) {
             entry.getValue().cancel();
         }
@@ -162,7 +169,7 @@ public class Replica extends AbstractReplica {
 
     private void broadcast(Serializable msg, boolean toMyself) {
         for (Map.Entry<Integer, ActorRef> entry : replicas.entrySet()) {
-            if (isElectingStarted || hasCrashed) return;
+            if (isElectionFirstPhase || hasCrashed) return;
             if (entry.getKey() == id && !toMyself) continue;
             tell(msg,entry.getValue());
         }
@@ -171,6 +178,20 @@ public class Replica extends AbstractReplica {
 
     public final Receive crashedReceive() {
         return createBaseReceiveBuilder()
+                .matchAny(msg -> {})
+                .build();
+    }
+
+    public final Receive electionRecive() {
+        return createBaseReceiveBuilder()
+                // TODO add your message handlers here .match(, )
+                .match(ElectionStarted.class,this::OnElectionStart)
+                .match(Election.class,this::OnElection)
+                .match(ElectionTimeout.class,this::OnElectionTimeout)
+                .match(ElectionACK.class,this::OnElectionACK)
+                .match(ElectionACKTimeout.class,this::OnElectionACKTimeout)
+                .match(Synchronization.class,this::OnSynchronization)
+                // add requests
                 .matchAny(msg -> {})
                 .build();
     }
@@ -198,6 +219,11 @@ public class Replica extends AbstractReplica {
     private void OnWriteOK(WriteOK writeOK) {
         Logger.debug("WriteOK recived by replica " + id);
         CancelTimeout(writeokTimeout.poll());
+        updateSEQN++;
+        AppliedUpdate updateToBeApplied = new AppliedUpdate(pendingUpdates.poll(),epoch,updateSEQN);
+        history = Stream.concat(history.stream(), Stream.of(updateToBeApplied)).collect(Collectors.toCollection(Stack::new));
+        Logger.debug(updateToBeApplied+ "is being applied");
+        Logger.debug("history:" + history);
     }
 
     private void OnUpdateACK(UpdateACK updateACK) {
@@ -216,6 +242,7 @@ public class Replica extends AbstractReplica {
             broadcast(new Update(writeRequest),false);
         } else {
             Logger.debug("WriteRequest detected ill send it to the coordinator");
+            requests = Stream.concat(requests.stream(), Stream.of(writeRequest)).collect(Collectors.toCollection(ArrayDeque::new));
             tell(writeRequest,replicas.get(currentCoordinator));
             fowardTimeout.add(getContext().system().scheduler().scheduleOnce( // ack timeout
                     Duration.create(REQUESTFORWARD_TIMEOUT, TimeUnit.MILLISECONDS),
@@ -229,8 +256,7 @@ public class Replica extends AbstractReplica {
     private void OnUpdate(Update update) {
         Logger.debug(id +" recived update from the coordinator " + currentCoordinator);
         CancelTimeout(fowardTimeout.poll());
-        updates = Stream.concat(updates.stream(), Stream.of(update)).collect(Collectors.toCollection(ArrayDeque::new));
-        updateSEQN++;
+        pendingUpdates = Stream.concat(pendingUpdates.stream(), Stream.of(update)).collect(Collectors.toCollection(ArrayDeque::new));
         tell(new UpdateACK(),replicas.get(currentCoordinator));
         writeokTimeout.add(getContext().system().scheduler().scheduleOnce( // ack timeout
                 Duration.create(WRITEOK_TIMEOUT, TimeUnit.MILLISECONDS),
@@ -241,10 +267,19 @@ public class Replica extends AbstractReplica {
     }
 
     private void OnElectionACKTimeout(ElectionACKTimeout electionACKTimeout) {
-        Logger.debug(id + " did NOT received ElectionACK in time");
-        int nextReplica = getNextReplicaIdInRing((id + 1) % replicas.size());
+        int crashedReplica = electionACKTimeout.currentElection.toReplica;
+        Logger.debug(id + " did NOT received ElectionACK in time by " + crashedReplica);
+        int nextReplica = getNextReplicaIdInRing(crashedReplica);
         ActorRef dst = replicas.get(nextReplica);
-        Election e = new Election(electionACKTimeout.currentElection.updates,nextReplica,electionACKTimeout.currentElection.id);
+        Election e;
+        if (!isElectionFirstPhase) { // im the second phase
+            Map<Integer, LastUpdate> newUpdates = electionACKTimeout.currentElection.updates.entrySet().stream()
+                    .filter(entry -> !entry.getKey().equals(crashedReplica))
+                    .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+            e = new Election(newUpdates,nextReplica,electionACKTimeout.currentElection.id);
+        } else {
+            e = new Election(electionACKTimeout.currentElection.updates,nextReplica,electionACKTimeout.currentElection.id);
+        }
         tell(e,dst);
         electionAckExpireTimer.poll();
         Logger.debug("send election from "+id+" to " + dst + " " + e);
@@ -258,16 +293,17 @@ public class Replica extends AbstractReplica {
 
     private void OnSynchronization(Synchronization synchronization) {
         Logger.debug(synchronization.newCoordinator +" is the new leader for " + id );
+        getContext().become(createReceive());
+        CancelTimeout(electionTimeout);
         epoch++;
         currentCoordinator = synchronization.newCoordinator;
-        Queue<Update> updateToApply = Stream.concat(updates.stream(), synchronization.updates.stream())
-                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting())) // group by how many times the object appears
-                .entrySet()
-                .stream()
-                .filter(entry -> entry.getValue() == 1) // filter only the one that appears 1 time
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toCollection(ArrayDeque::new));
-        Logger.debug(id + " must apply these updates " + updateToApply);
+        Logger.debug(id + " must apply these updates " + synchronization.updates);
+        heartbeatExpireTimer = getContext().system().scheduler().scheduleOnce(
+                Duration.create(HEARTBEAT_TIMEOUT_MS, TimeUnit.MILLISECONDS),
+                getSelf(),
+                new CoordinatorCrashed(currentCoordinator),
+                getContext().system().dispatcher(),
+                getSelf());
     }
 
     private void OnElectionACK(ElectionACK electionACK) {
@@ -298,27 +334,44 @@ public class Replica extends AbstractReplica {
                     getContext().system().dispatcher(),
                     getSelf()));
         } else {
-            if (amICoordinator) return;
+            if (amICoordinator) return; // if i am already the coordinator i return and do nothing
             Logger.debug(id + " can elect");
-            isElectingStarted =false;
+            isElectionFirstPhase = false;
             int newCoordinator = getNewCoordinatorId(election.updates);
             if (newCoordinator == id) {
                 Logger.debug(id + " is the leader");
                 amICoordinator = true;
                 epoch++;
-                broadcast(new Synchronization(updates,id),false);
+                for (Map.Entry<Integer, LastUpdate> entry : election.updates.entrySet()) {
+                    if (entry.getKey()==id) continue;
+                    int historyDiff = election.updates.get(id).epochSEQN - entry.getValue().epochSEQN;
+                    List<Update> listOfUpdatesToApply = IntStream.range(0, historyDiff)
+                            .mapToObj(i -> history.get(history.size() - 1 - i).update)
+                            .toList(); // immutable
+                    tell(new Synchronization(listOfUpdatesToApply,id),replicas.get(entry.getKey()));
+                }
+                getContext().become(createReceive());
                 BeginHeartBeat();
                 replicas.keySet().retainAll(election.updates.keySet());
             } else {
                 Logger.debug("Cannot be coordinator but " + newCoordinator + " should be");
-                ActorRef dst = replicas.get(getNextReplicaIdInRing(id));
-                tell(election,dst);
+                int nextReplica = getNextReplicaIdInRing(id);
+                ActorRef dst = replicas.get(nextReplica);
+                Election e = new Election(election.updates,nextReplica,election.id);
+                tell(e,dst);
                 electionAckExpireTimer.add(getContext().system().scheduler().scheduleOnce( // ack timeout
                         Duration.create(ELECTIONACK_TIMEOUT_MS, TimeUnit.MILLISECONDS),
                         getSelf(),
-                        new ElectionACKTimeout(election),
+                        new ElectionACKTimeout(e),
                         getContext().system().dispatcher(),
                         getSelf()));
+                List<Integer> replicaList = new ArrayList<>(replicas.keySet());
+                electionTimeout = getContext().system().scheduler().scheduleOnce( // synchronizaion message timeout
+                        Duration.create((long) SYNCHRONIZAZION_TIMEOUT * (replicaList.indexOf(id)+1), TimeUnit.MILLISECONDS),
+                        getSelf(),
+                        new ElectionTimeout(),
+                        getContext().system().dispatcher(),
+                        getSelf());
             }
         }
     }
@@ -348,9 +401,9 @@ public class Replica extends AbstractReplica {
     }
 
     private void OnElectionStart(ElectionStarted electionStarted) {
-        if (isElectingStarted) return;
+        if (isElectionFirstPhase) return;
         Logger.debug("for "+id+" from "+electionStarted.replicaId+" the election is started");
-        isElectingStarted = true;
+        isElectionFirstPhase = true;
         replicas.remove(currentCoordinator); // remove current coordinator
 
         int lowestKey = replicas.firstKey();
@@ -363,7 +416,6 @@ public class Replica extends AbstractReplica {
                     getContext().system().dispatcher(),
                     getSelf());
         } else {
-            // can crash here
             Logger.debug(id + " begun the election");
             BeginElection();  // the first must send the election directly
         }
@@ -387,6 +439,7 @@ public class Replica extends AbstractReplica {
         CancelTimeout(heartbeatExpireTimer);
         CancelTimeout(fowardTimeout);
         CancelTimeout(writeokTimeout);
+        getContext().become(electionRecive());
         Logger.debug("for "+id+" the coordinator crashed");
         replicas.remove(currentCoordinator); // remove current coordinator
         broadcast(new ElectionStarted(id,currentCoordinator),true);

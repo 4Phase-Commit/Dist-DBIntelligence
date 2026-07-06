@@ -484,37 +484,63 @@ public abstract class AbstractReplica extends AbstractActor {
     }
 
     public static class Update implements Serializable {
-        public final AbstractClient.WriteRequest update;
+        public final AbstractClient.WriteRequest request;
 
-        public Update(AbstractClient.WriteRequest update) {
-            this.update = update;
+        public Update(AbstractClient.WriteRequest request) {
+            this.request = request;
         }
 
         @Override
         public boolean equals(Object obj) {
             if (obj instanceof Update) {
                 Update o = (Update) obj;
-                return o.update.equals(this.update);
+                return o.request.equals(this.request);
             }
             return false;
         }
 
         @Override
         public String toString() {
-            return "Update(updates=" + update + ")";
+            return "AppliedUpdates(updates=" + request + ")";
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(update);
+            return Objects.hash(request);
+        }
+    }
+
+    public static class AppliedUpdate implements Serializable {
+        public final Update update;
+        public final int epoch;
+        private final int updateSEQN;
+
+        public AppliedUpdate(Update update, int epoch, int updateSEQN) {
+            this.update = update;
+            this.epoch = epoch;
+            this.updateSEQN = updateSEQN;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof AppliedUpdate) {
+                AppliedUpdate o = (AppliedUpdate) obj;
+                return o.update.equals(this.update) && o.epoch == this.epoch && o.updateSEQN == this.updateSEQN;
+            }
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return "AppliedUpdates(updates=" + update + " epoch=" +epoch+" SEQN=" + updateSEQN +")";
         }
     }
 
     public static class Synchronization implements Serializable {
-        public final Queue<Update> updates;
+        public final List<Update> updates;
         public final int newCoordinator;
 
-        public Synchronization(Queue<Update> updates,int newCoordinator) {
+        public Synchronization(List<Update> updates,int newCoordinator) {
             this.updates = updates;
             this.newCoordinator = newCoordinator;
         }
