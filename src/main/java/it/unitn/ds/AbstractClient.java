@@ -1,6 +1,7 @@
 package it.unitn.ds;
 
 import java.io.Serializable;
+import java.util.Objects;
 import java.util.Optional;
 
 import akka.actor.AbstractActor;
@@ -9,7 +10,7 @@ import akka.japi.pf.ReceiveBuilder;
 
 public abstract class AbstractClient extends AbstractActor {
     private final Optional<ActorRef> defaultTargetReplica;
-    private final Optional<ActorRef> listener;
+    private final Optional<ActorRef> listener; // testing
     private final long readTimeoutDelay;
     private final long writeTimeoutDelay;
 
@@ -36,7 +37,7 @@ public abstract class AbstractClient extends AbstractActor {
     // API Messages
     // =================================================================================
 
-    public static class ReadRequest {
+    public static class ReadRequest  {
         ActorRef replica;
         int index;
 
@@ -48,9 +49,22 @@ public abstract class AbstractClient extends AbstractActor {
             this.replica = replica;
             this.index = index;
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof ReadRequest) {
+                ReadRequest o = (ReadRequest) obj;
+                return o.index==this.index;
+            }
+            return false;
+        }
+        @Override
+        public int hashCode() {
+            return Objects.hash(index);
+        }
     }
 
-    public static class WriteRequest {
+    public static class WriteRequest implements Serializable {
         ActorRef replica;
         int index;
         int value;
@@ -64,6 +78,21 @@ public abstract class AbstractClient extends AbstractActor {
             this.index = index;
             this.replica = replica;
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof WriteRequest) {
+                WriteRequest o = (WriteRequest) obj;
+                return o.index==this.index && o.value==this.value;
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(index,value);
+        }
+
     }
 
     private static class Result implements Serializable {
