@@ -44,12 +44,12 @@ public class Main {
         // TODO: Implement your main logic related to the client
 
         // testing heartbeat crash
-        system.scheduler().scheduleOnce(
-                Duration.create(2000, TimeUnit.MILLISECONDS),
-                replicas.get(0),
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Now,0),
-                system.dispatcher(),
-                ActorRef.noSender());
+//        system.scheduler().scheduleOnce(
+//                Duration.create(2000, TimeUnit.MILLISECONDS),
+//                replicas.get(0),
+//                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Now,0),
+//                system.dispatcher(),
+//                ActorRef.noSender());
 
 
         // test for not receiving the writeok
