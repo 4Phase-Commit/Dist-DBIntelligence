@@ -42,6 +42,31 @@ public class Client extends AbstractClient {
     }
 
     // =================================================================================
+    // Messages for controllin the client
+    // =================================================================================
+    public static class SendReadMessage {
+        public final ActorRef replica;
+        public final int key;
+
+        public SendReadMessage(ActorRef replica, int key) {
+            this.replica = replica;
+            this.key = key;
+        }
+    }
+
+    public static class SendWriteMessage {
+        public final ActorRef replica;
+        public final int key;
+        public final int value;
+
+        public SendWriteMessage(ActorRef replica, int key, int value) {
+            this.replica = replica;
+            this.key = key;
+            this.value = value;
+        }
+    }
+
+    // =================================================================================
     // Message Sending
     // =================================================================================
 
@@ -103,10 +128,31 @@ public class Client extends AbstractClient {
     @Override
     public final Receive createReceive() {
         return createBaseReceiveBuilder()
+                .match(SendReadMessage.class, this::handleSendReadCommand)
+                .match(SendWriteMessage.class, this::handleSendWriteCommand)
                 .match(ReadResult.class, this::handleReadResult)
                 .match(WriteResult.class, this::handleWriteResult)
                 .match(TimeoutEnvelope.class, this::handleTimeout)
                 .build();
+    }
+
+    public void handleSendReadCommand(SendReadMessage msg) {
+        Logger.log(String.format(
+                "[Client %s] Received READ command message for index (%d)",
+                clientName(),
+                msg.key));
+
+        sendRead(msg.replica, msg.key);
+    }
+
+    public void handleSendWriteCommand(SendWriteMessage msg) {
+        Logger.log(String.format(
+                "[Client %s] Received WRITE command message for (%d, %d)",
+                clientName(),
+                msg.key,
+                msg.value));
+
+        sendWrite(msg.replica, msg.key, msg.value);
     }
 
     public void handleReadResult(ReadResult result) {
@@ -168,14 +214,14 @@ public class Client extends AbstractClient {
         if (timeoutMessage instanceof AbstractClient.ReadTimeout timeout) {
             Logger.log(String.format(
                     "[Client %s] TIMEOUT READ request to %s (%d)",
-                    getSelf().path().name(),
+                    clientName(),
                     timeout.replica.path().name(),
                     timeout.index));
 
         } else if (timeoutMessage instanceof AbstractClient.WriteTimeout timeout) {
             Logger.log(String.format(
                     "[Client %s] TIMEOUT WRITE request to %s (%d, %d)",
-                    getSelf().path().name(),
+                    clientName(),
                     timeout.replica.path().name(),
                     timeout.index,
                     timeout.value));

@@ -3,6 +3,7 @@ package it.unitn.ds;
 import akka.actor.ActorRef;
 import akka.actor.Cancellable;
 import akka.actor.Props;
+import it.unitn.ds.AbstractClient.ReadResult;
 import scala.concurrent.duration.Duration;
 
 import java.io.Serializable;
@@ -42,6 +43,8 @@ public class Replica extends AbstractReplica {
     private final Queue<Update> pendingUpdates;
     private final Stack<AppliedUpdate> history;
 
+    private int[] locations;
+
     public Replica(int id) {
         this(id, AbstractReplica.MIN_LATENCY, AbstractReplica.MAX_LATENCY, AbstractReplica.COORDINATOR_BEAT_INTERVAL,
                 Optional.empty());
@@ -58,6 +61,8 @@ public class Replica extends AbstractReplica {
         electionAckExpireTimers = new ArrayDeque<>();
         fowardTimeouts = new ArrayDeque<>();
         writeokTimeouts = new ArrayDeque<>();
+
+        locations = new int[POSITIONS_LIST_LENGTH];
     }
 
     public static Props props(int id, int minLatency, int maxLatency, int coordinatorBeatInterval) {
@@ -280,6 +285,7 @@ public class Replica extends AbstractReplica {
                     OnCanCrashType(msg);
                     OnUpdate(msg);
                 })
+                .match(AbstractClient.ReadRequest.class, this::OnReadRequest)
                 .match(AbstractClient.WriteRequest.class, this::OnWriteRequest)
                 .match(UpdateACK.class, this::OnUpdateACK)
                 .match(WriteOK.class, msg -> {
@@ -328,6 +334,35 @@ public class Replica extends AbstractReplica {
             Logger.debug("Coordinator sending the WriteOK to everyone");
             broadcast(new WriteOK(), false);
             updateACKCount = 0;
+        }
+    }
+
+    private void OnReadRequest(AbstractClient.ReadRequest request) {
+        ActorRef client = getSender();
+
+        Logger.log(String.format(
+                "[Replica %d] Received READ request (%d) from %s",
+                this.id,
+                request.index,
+                client.path().name()));
+
+        // Read immediately, return whatever this replica has
+        if (request.index >= this.locations.length || request.index < 0) {
+            tell(new ReadResult(false, request.index, null, this.id), client);
+            Logger.log(String.format(
+                    "[Replica %d] READ request (%d) from %s - %s",
+                    this.id,
+                    request.index,
+                    client.path().name(),
+                    "FAILED"));
+        } else {
+            tell(new ReadResult(true, request.index, this.locations[request.index], this.id), client);
+            Logger.log(String.format(
+                    "[Replica %d] READ request (%d) from %s - %s",
+                    this.id,
+                    request.index,
+                    client.path().name(),
+                    "SUCCESS"));
         }
     }
 

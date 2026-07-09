@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
+import akka.actor.Props;
 import it.unitn.ds.AbstractReplica.InitSystem;
 import scala.concurrent.duration.Duration;
 
@@ -41,11 +42,62 @@ public class Main {
 
         // Testing a client execution and r/w logic for replicas
         // TODO: polish for final release once done
-        Client client = new Client(1, 2, Optional.of(replicas.get(1)), Optional.empty());
 
-        client.sendRead(replicas.get(1), 0);
-        client.sendWrite(replicas.get(1), 1, 150);
-        client.sendRead(replicas.get(1), 0);
+        ActorRef client = system.actorOf(
+                Client.props(
+                        1,
+                        2,
+                        Optional.of(replicas.get(1))),
+                "client1");
+
+        // client.tell(new Client.SendReadMessage(replicas.get(1), 1),
+        // ActorRef.noSender());
+        // client.tell(new Client.SendWriteMessage(replicas.get(1), 1, 150),
+        // ActorRef.noSender());
+        // client.tell(new Client.SendReadMessage(replicas.get(1), 1),
+        // ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(0),
+                client,
+                new Client.SendReadMessage(replicas.get(1), 1),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofMillis(500),
+                client,
+                new Client.SendReadMessage(replicas.get(1), 2),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(1),
+                client,
+                new Client.SendWriteMessage(replicas.get(1), 1, 150),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(2),
+                client,
+                new Client.SendReadMessage(replicas.get(1), 3),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(3),
+                client,
+                new Client.SendWriteMessage(replicas.get(1), 1, 150),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(4),
+                client,
+                new Client.SendReadMessage(replicas.get(1), 4),
+                system.dispatcher(),
+                ActorRef.noSender());
 
         // TODO: Create your clients
 
