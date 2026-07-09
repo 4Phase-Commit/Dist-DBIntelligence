@@ -13,7 +13,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Replica extends AbstractReplica {
-    private static final int HEARTBEAT_TIMEOUT_MS = 300;
+    private static final int HEARTBEAT_TIMEOUT_MS = 1100;
     private static final int ELECTIONACK_TIMEOUT_MS = 3000;
     public static final int ELECTION_TIMEOUT_MULTIPLIER = 100;
     public static final int REQUEST_FORWARD_TIMEOUT = 200;
@@ -117,7 +117,7 @@ public class Replica extends AbstractReplica {
             if (entry.getKey() == id)
                 continue;
             Cancellable scheduler = getContext().system().scheduler().scheduleWithFixedDelay(
-                    Duration.create(0, TimeUnit.SECONDS), // remove
+                    Duration.Zero(),
                     Duration.create(getCoordinatorBeatInterval(), TimeUnit.MILLISECONDS),
                     getSelf(),
                     new SendHeartBeat(entry.getKey(), entry.getValue(), id),
