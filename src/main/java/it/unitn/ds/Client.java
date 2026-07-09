@@ -179,6 +179,10 @@ public class Client extends AbstractClient {
                     timeout.replica.path().name(),
                     timeout.index,
                     timeout.value));
+        } else {
+            Logger.log(String.format(
+                    "[Client %s] Received an invalid timeout message",
+                    getSelf().path().name()));
         }
     }
 
