@@ -84,6 +84,12 @@ public class Replica extends AbstractReplica {
 
     private void crashNow() {
         Logger.debug(id + " crashed");
+        // cancel all timeouts
+        CancelTimeout(fowardTimeouts);
+        CancelTimeout(writeokTimeouts);
+        CancelTimeout(electionAckExpireTimers);
+        CancelTimeout(heartbeatExpireTimer);
+        CancelTimeout(electionTimeout);
         if (amICoordinator) {
             stopHeartBeat();
         }

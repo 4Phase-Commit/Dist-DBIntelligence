@@ -1,1 +1,32 @@
 \section{Project Structure}
+The architectural design of the project strictly adheres to the provided template and the original specifications. The system is composed of six major classes that define the primary actors within the message-driven environment. 
+The most critical components are detailed below:
+\begin{itemize}
+    \item \textbf{AbstractClient}: An abstract class that implements the core, common functionalities shared across all client implementations.
+    \item \textbf{Client}: A concrete class implementing the specific behavior of a standard client. In this setup, the client is responsible for issuing read and write requests to a designated replica.
+    \item \textbf{AbstractReplica}: An abstract class that encapsulates the foundational and shared behaviors of all replica types.
+    \item \textbf{Replica}: A concrete class that defines the specific operational behavior of a replica. In this project, replicas handle incoming read requests and forward write operations to the coordinator. The coordinator then manages the update lifecycle and ensures consistency via a Two-Phase Commit-like protocol. The coordinator itself is a specialized replica tasked with additional administrative duties, such as broadcasting periodic heartbeats to assert its liveness, as detailed in the subsequent sections.
+\end{itemize}
+
+\subsection{Replica Functionality and State Management}
+To maintain a clean, modular, and maintainable codebase, we introduced several utility methods within the replica implementation. These helpers manage heartbeat mechanisms, determine the next active node in the ring topology (thereby establishing a virtual ring based on replica identifiers), execute the leader election algorithm to designate a new coordinator, and handle repetitive tasks such as broadcasting messages, canceling timeouts, and constructing election payloads.
+
+To properly manage state transitions and failures, we implemented three distinct receive behaviors within the Akka actor configuration:
+\begin{itemize}
+    \item \textbf{createReceive}: The default behavior during normal operation. In this state, the replica accepts standard protocol messages and triggers the corresponding business logic.
+    \item \textbf{electionReceive}: Activated exclusively when a replica enters the leader election phase. This behavior restricts the subset of acceptable messages to simplify state transitions and includes specific routines to handle client requests received during an active election.
+    \item \textbf{crashedReceive}: Emulated when a replica undergoes a failure. In this state, the actor suppresses all incoming messages, thereby accurately simulating a silent node crash.
+\end{itemize}
+
+To facilitate communication and asynchronous event handling, we defined several custom serializable message classes on top of the baseline template. These messages include:
+\begin{itemize}
+    \item \textbf{HeartBeat}: A control message periodically broadcast by the active coordinator to all replicas at a constant time interval to signal liveness.
+    \item \textbf{SendHeartBeat}: A self-targeted message scheduled by the coordinator to trigger its own heartbeat emission routine, leveraging the underlying network channel's \texttt{tell} pattern.
+    \item \textbf{CoordinatorCrashed}: A message broadcast to all participating nodes by any replica that detects a coordinator timeout. This explicitly triggers the election phase by building upon the pre-existing \texttt{ElectionStarted} message.
+    \item \textbf{Election}: An election token passed sequentially along the virtual ring during the consensus phase. Each replica appends its latest state metadata to this message, enabling the election of the most up-to-date coordinator based on the policy described later in this report.
+    \item \textbf{LastUpdate}: A metadata message specifying the latest update processed by a replica, containing both the epoch and the sequence number. This keeps election messages lightweight by avoiding the transmission of the actual data payload.
+    \item \textbf{ElectionACK}: An acknowledgment message required by the ring-based routing protocol, sent to confirm that the election token has been successfully handed over to the next successor.
+    \item \textbf{ElectionTimeout}: A timer message indicating that the election process has failed to converge within the expected timeframe. This serves a dual purpose: verifying if the initial detector started the election promptly, and monitoring whether the prospective coordinator issues the subsequent synchronization message in time.
+    \item \textbf{ElectionACKTimeout}: A timeout message signaling that a expected \texttt{ElectionACK} was not received, indicating that the immediate successor in the ring has crashed.
+    \item \textbf{Synchronization}: A state-transfer message dispatched by the newly elected coordinator to bring all operational replicas up to date by transmitting missed log entries and formally confirming its new coordinator status.
+\end{itemize}
