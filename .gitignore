@@ -52,3 +52,12 @@ gradle-app.setting
 .settings/
 .classpath
 .project
+
+# TeX
+**.pdf
+docs/**.aux
+docs/**.fdb_latexmk
+docs/**.fls
+docs/**.out
+docs/**.gz
+
