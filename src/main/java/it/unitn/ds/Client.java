@@ -95,7 +95,7 @@ public class Client extends AbstractClient {
                 new AbstractClient.WriteTimeout(getSelf(), replica, index, value),
                 getWriteTimeoutDelay());
 
-        replica.tell(new AbstractClient.WriteRequest(index, value), getSelf());
+        replica.tell(new AbstractClient.WriteRequest(index, value, replica), getSelf());
 
         Logger.log(String.format(
                 "[Client %s] requesting WRITE (%d, %d) to %s",
@@ -167,13 +167,14 @@ public class Client extends AbstractClient {
             }
         }
 
-        Logger.log(String.format(
-                "[Client %s] READ complete (%s, %d, %s) from %s",
-                clientName(),
-                result.success,
-                result.index,
-                result.value,
-                result.fromReplica));
+        // Duplicate log with the callback
+        // Logger.log(String.format(
+        // "[Client %s] READ complete (%s, %d, %s) from %s",
+        // clientName(),
+        // result.success,
+        // result.index,
+        // result.value,
+        // result.fromReplica));
 
         callbackOnReadResult(result);
     }
@@ -190,13 +191,14 @@ public class Client extends AbstractClient {
             }
         }
 
-        Logger.log(String.format(
-                "[Client %s] WRITE complete (%s, %d, %s) from %s",
-                clientName(),
-                result.success,
-                result.index,
-                result.value,
-                result.fromReplica));
+        // Duplicate log with the callback
+        // Logger.log(String.format(
+        // "[Client %s] WRITE complete (%s, %d, %s) from %s",
+        // clientName(),
+        // result.success,
+        // result.index,
+        // result.value,
+        // result.fromReplica));
 
         callbackOnWriteResult(result);
     }

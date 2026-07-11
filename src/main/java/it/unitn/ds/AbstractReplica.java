@@ -83,7 +83,7 @@ public abstract class AbstractReplica extends AbstractActor {
      *         milliseconds
      */
     public int getMaxLatencyPlusTolerance() {
-        return maxLatency + (int)((float)maxLatency/2.0 * getSystemNumberOfActors());
+        return maxLatency + (int) ((float) maxLatency / 2.0 * getSystemNumberOfActors());
     }
 
     // =================================================================================
@@ -91,7 +91,8 @@ public abstract class AbstractReplica extends AbstractActor {
     // =================================================================================
 
     void tell(Serializable m, ActorRef dst) {
-        // Lazily create one channel actor per destination it will also add the value to the map
+        // Lazily create one channel actor per destination it will also add the value to
+        // the map
         ActorRef channel = channels.computeIfAbsent(dst, d -> getContext().actorOf(
                 NetworkChannel.props(d, getMinLatency(), getMaxLatency()),
                 "channel_to_" + d.path().name()));
@@ -323,7 +324,7 @@ public abstract class AbstractReplica extends AbstractActor {
         public final int replicaId;
         public final int currentCoordinator;
 
-        public HeartBeat(int replicaId,int currentCoordinator) {
+        public HeartBeat(int replicaId, int currentCoordinator) {
             this.replicaId = replicaId;
             this.currentCoordinator = currentCoordinator;
         }
@@ -348,7 +349,7 @@ public abstract class AbstractReplica extends AbstractActor {
         public final int replicaId;
         public final int currentCoordinator;
 
-        public SendHeartBeat(int replicaId,ActorRef replica,int currentCoordinator) {
+        public SendHeartBeat(int replicaId, ActorRef replica, int currentCoordinator) {
             this.replicaId = replicaId;
             this.replica = replica;
             this.currentCoordinator = currentCoordinator;
@@ -358,7 +359,8 @@ public abstract class AbstractReplica extends AbstractActor {
         public boolean equals(Object obj) {
             if (obj instanceof HeartBeat) {
                 SendHeartBeat o = (SendHeartBeat) obj;
-                return o.replica == this.replica && o.replicaId == this.replicaId && o.currentCoordinator == this.currentCoordinator;
+                return o.replica == this.replica && o.replicaId == this.replicaId
+                        && o.currentCoordinator == this.currentCoordinator;
             }
             return false;
         }
@@ -394,9 +396,9 @@ public abstract class AbstractReplica extends AbstractActor {
     public static class Election implements Serializable {
         public final Map<Integer, LastUpdate> updates;
         public final int toReplica;
-        public  final int id;
+        public final int id;
 
-        public Election(Map<Integer, LastUpdate> updates,int toReplica,int id) {
+        public Election(Map<Integer, LastUpdate> updates, int toReplica, int id) {
 
             this.updates = updates;
             this.toReplica = toReplica;
@@ -418,12 +420,12 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
-    public static class LastUpdate implements Serializable,Comparable<LastUpdate> {
+    public static class LastUpdate implements Serializable, Comparable<LastUpdate> {
         public final int epoch;
         public final int epochSEQN;
 
         public LastUpdate(int epoch, int epochSEQN) {
-            this.epoch= epoch;
+            this.epoch = epoch;
             this.epochSEQN = epochSEQN;
         }
 
@@ -438,7 +440,7 @@ public abstract class AbstractReplica extends AbstractActor {
 
         @Override
         public String toString() {
-            return "LastUpdate(" + " epoch=" + epoch + " SEQN=" + epochSEQN +")";
+            return "LastUpdate(" + " epoch=" + epoch + " SEQN=" + epochSEQN + ")";
         }
 
         @Override
@@ -484,17 +486,21 @@ public abstract class AbstractReplica extends AbstractActor {
     }
 
     public static class Update implements Serializable {
+        public final Integer id;
         public final AbstractClient.WriteRequest request;
+        public final ActorRef client;
 
-        public Update(AbstractClient.WriteRequest request) {
+        public Update(Integer id, AbstractClient.WriteRequest request, ActorRef client) {
+            this.id = id;
             this.request = request;
+            this.client = client;
         }
 
         @Override
         public boolean equals(Object obj) {
             if (obj instanceof Update) {
                 Update o = (Update) obj;
-                return o.request.equals(this.request);
+                return o.id == id && o.request.equals(this.request) && o.client.equals(this.client);
             }
             return false;
         }
@@ -507,6 +513,14 @@ public abstract class AbstractReplica extends AbstractActor {
         @Override
         public int hashCode() {
             return Objects.hash(request);
+        }
+    }
+
+    public static class UpdateRequest implements Serializable {
+        public final Update update;
+
+        public UpdateRequest(Update update) {
+            this.update = update;
         }
     }
 
@@ -532,7 +546,7 @@ public abstract class AbstractReplica extends AbstractActor {
 
         @Override
         public String toString() {
-            return "AppliedUpdates(updates=" + update + " epoch=" +epoch+" SEQN=" + updateSEQN +")";
+            return "AppliedUpdates(updates=" + update + " epoch=" + epoch + " SEQN=" + updateSEQN + ")";
         }
     }
 
@@ -540,7 +554,7 @@ public abstract class AbstractReplica extends AbstractActor {
         public final List<Update> updates;
         public final int newCoordinator;
 
-        public Synchronization(List<Update> updates,int newCoordinator) {
+        public Synchronization(List<Update> updates, int newCoordinator) {
             this.updates = updates;
             this.newCoordinator = newCoordinator;
         }
@@ -561,9 +575,15 @@ public abstract class AbstractReplica extends AbstractActor {
     }
 
     public static class UpdateACK implements Serializable {
+        public int id;
+
+        UpdateACK(int id) {
+            this.id = id;
+        }
+
         @Override
         public String toString() {
-            return "UpdateACK";
+            return "UpdateACK " + id;
         }
     }
 
