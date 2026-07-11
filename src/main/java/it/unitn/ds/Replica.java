@@ -83,7 +83,7 @@ public class Replica extends AbstractReplica {
     }
 
     private void crashNow() {
-        Logger.debug(id + " crashed");
+        debug(id + " crashed");
         // cancel all timeouts
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);
@@ -105,7 +105,7 @@ public class Replica extends AbstractReplica {
         currentCoordinator = sysInit.coordinator_id;
         replicas = new TreeMap<>(sysInit.group);
         heartbeatSchedulers = new HashMap<>(replicas.size());
-        Logger.debug("I am "+id+" and i am the coordinator "+amICoordinator);
+        debug("I am "+id+" and i am the coordinator "+amICoordinator);
 
         if (!amICoordinator) return;
         beginHeartBeat();
@@ -113,7 +113,7 @@ public class Replica extends AbstractReplica {
     }
 
     private void beginHeartBeat() {
-        Logger.debug("Begin Heartbeat");
+        debug("Begin Heartbeat");
         for (Map.Entry<Integer, ActorRef> entry : replicas.entrySet()) {
             if (entry.getKey()==id) continue;
             Cancellable scheduler = getContext().system().scheduler().scheduleWithFixedDelay(
@@ -128,7 +128,7 @@ public class Replica extends AbstractReplica {
     }
 
     private void stopHeartBeat() {
-        Logger.debug("Stop Heartbeat");
+        debug("Stop Heartbeat");
         for (Map.Entry<Integer, Cancellable> entry : heartbeatSchedulers.entrySet()) {
             entry.getValue().cancel();
         }
@@ -205,7 +205,7 @@ public class Replica extends AbstractReplica {
         ActorRef dst = replicas.get(nextReplica);
         Election e = new Election(updates,nextReplica, msgID);
         tell(e,dst);
-        Logger.debug("send election from "+msgID+" to " + dst + " " + e);
+        debug("send election from "+msgID+" to " + dst + " " + e);
         electionAckExpireTimers.add(getContext().system().scheduler().scheduleOnce( // electionack timeout
                 Duration.create(ELECTIONACK_TIMEOUT_MS, TimeUnit.MILLISECONDS),
                 getSelf(),
@@ -308,20 +308,20 @@ public class Replica extends AbstractReplica {
     }
 
     private void OnWriteOK(WriteOK writeOK) {
-        Logger.debug("WriteOK recived by replica " + id);
+        debug("WriteOK recived by replica " + id);
         CancelTimeout(writeokTimeouts.poll());
         updateSEQN++;
         AppliedUpdate updateToBeApplied = new AppliedUpdate(pendingUpdates.poll(),epoch,updateSEQN);
         history.push(updateToBeApplied);
-        Logger.debug(updateToBeApplied+ "is being applied");
-        Logger.debug("history:" + history);
+        debug(updateToBeApplied+ " is being applied");
+        debug("history: " + history);
     }
 
     private void OnUpdateACK(UpdateACK updateACK) {
-        Logger.debug("Got the UpdateACK from " + getSender());
+        debug("Got the UpdateACK from " + getSender());
         updateACKCount++;
         if (updateACKCount>=(replicas.size()/2)+1) {
-            Logger.debug("Coordinator sending the WriteOK to everyone");
+            debug("Coordinator sending the WriteOK to everyone");
             broadcast(new WriteOK(),false);
             updateACKCount=0;
         }
@@ -329,10 +329,10 @@ public class Replica extends AbstractReplica {
 
     private void OnWriteRequest(AbstractClient.WriteRequest writeRequest) {
         if (amICoordinator) {
-            Logger.debug("WriteRequest detected ill send the Update to replicas");
+            debug("WriteRequest detected ill send the Update to replicas");
             broadcast(new Update(writeRequest),false);
         } else {
-            Logger.debug("WriteRequest detected ill send it to the coordinator");
+            debug("WriteRequest detected ill send it to the coordinator");
             requests.add(writeRequest);
             tell(writeRequest,replicas.get(currentCoordinator));
             fowardTimeouts.add(getContext().system().scheduler().scheduleOnce( // ack timeout
@@ -345,7 +345,7 @@ public class Replica extends AbstractReplica {
     }
 
     private void OnUpdate(Update update) {
-        Logger.debug(id +" recived update from the coordinator " + currentCoordinator);
+        debug("recived update from the coordinator " + currentCoordinator);
         CancelTimeout(fowardTimeouts.poll());
         pendingUpdates.add(update);
         tell(new UpdateACK(),replicas.get(currentCoordinator));
@@ -359,7 +359,7 @@ public class Replica extends AbstractReplica {
 
     private void OnElectionACKTimeout(ElectionACKTimeout electionACKTimeout) {
         int crashedReplica = electionACKTimeout.currentElection.toReplica;
-        Logger.debug(id + " did NOT received ElectionACK in time by " + crashedReplica);
+        debug("did NOT received ElectionACK in time by " + crashedReplica);
 
         electionAckExpireTimers.poll(); // remove from the list the timeout beacause it is expired
 
@@ -375,26 +375,26 @@ public class Replica extends AbstractReplica {
     }
 
     private void OnSynchronization(Synchronization synchronization) {
-        Logger.debug(synchronization.newCoordinator +" is the new leader for " + id );
+        debug(synchronization.newCoordinator +" is the new leader");
         getContext().become(createReceive());
         CancelTimeout(electionTimeout); // delete sync timeout
         epoch++;
         currentCoordinator = synchronization.newCoordinator;
-        Logger.debug(id + " must apply these updates " + synchronization.updates);
+        debug("must apply these updates " + synchronization.updates);
         // TODO: apply all history
         pendingUpdates.clear(); // all pending updates are lost and not applied ever
         listenForHeartBeat();
     }
 
     private void OnElectionACK(ElectionACK electionACK) {
-        Logger.debug(id + " received ElectionACK by " + getSender());
+        debug("received ElectionACK by " + getSender());
         CancelTimeout(electionAckExpireTimers.poll());
     }
 
 
     private void OnElection(Election election) {
         CancelTimeout(electionTimeout);
-        Logger.debug(id + " election ID: " + election.id + " received " + election);
+        debug("election ID: " + election.id + " received " + election);
         tell(new ElectionACK(),getSender()); // ack for the last node
         if (!election.updates.containsKey(id)) { // add me to election
             Map<Integer,LastUpdate> newUpdates = Stream.concat(election.updates.entrySet().stream(), Map.of(id,new LastUpdate(epoch,updateSEQN)).entrySet().stream())
@@ -405,11 +405,11 @@ public class Replica extends AbstractReplica {
             sendElection(id,newUpdates,election.id);
         } else {
             if (amICoordinator) return; // if I am already the coordinator I return and do nothing
-            Logger.debug(id + " can elect");
+            debug("can elect");
             isElectionFirstPhase = false;
             int newCoordinator = getNewCoordinatorId(election.updates);
             if (newCoordinator == id) { // elect me as the leader
-                Logger.debug(id + " is the leader");
+                debug("is the leader");
                 amICoordinator = true;
                 epoch++;
                 sendSyncUpdates(election);
@@ -417,7 +417,7 @@ public class Replica extends AbstractReplica {
                 beginHeartBeat();
                 replicas.keySet().retainAll(election.updates.keySet()); // update the replica set
             } else { // am not the leader to pass to the next one
-                Logger.debug("Cannot be coordinator but " + newCoordinator + " should be");
+                debug("Cannot be coordinator but " + newCoordinator + " should be");
                 sendElection(id,election.updates,election.id);
                 electionTimeout = getContext().system().scheduler().scheduleOnce( // synchronizaion message timeout
                         Duration.create((long) SYNCHRONIZAZION_TIMEOUT * (indexOfReplica(id)+1), TimeUnit.MILLISECONDS),
@@ -434,14 +434,14 @@ public class Replica extends AbstractReplica {
     }
 
     private void OnElectionTimeout(ElectionTimeout electionTimeout) {
-        Logger.debug("election timed out by " + id);
+        debug("election timed out");
         beginElection();
     }
 
 
     private void OnElectionStart(ElectionStarted electionStarted) {
         if (isElectionFirstPhase) return;
-        Logger.debug("for "+id+" from "+electionStarted.replicaId+" the election is started");
+        debug("from "+electionStarted.replicaId+" the election is started");
         isElectionFirstPhase = true;
         replicas.remove(currentCoordinator); // remove current coordinator
 
@@ -454,7 +454,7 @@ public class Replica extends AbstractReplica {
                     getContext().system().dispatcher(),
                     getSelf());
         } else {
-            Logger.debug(id + " begun the election");
+            debug("begun the election");
             beginElection();  // the first must send the election directly
         }
 
@@ -463,7 +463,7 @@ public class Replica extends AbstractReplica {
 //        ActorRef dst = replicas.get(nextReplica);
 //        Election e = new Election(Map.of(id,new LastUpdate(epoch,updateSEQN)),nextReplica,id);
 //
-//        Logger.debug("send election from "+id+" to " + dst + " " + e);
+//        debug("send election from "+id+" to " + dst + " " + e);
 //        tell(e,dst);
 //        electionAckExpireTimers.add(getContext().system().scheduler().scheduleOnce( // ack timeout
 //                Duration.create(ELECTIONACK_TIMEOUT_MS, TimeUnit.MILLISECONDS),
@@ -478,13 +478,13 @@ public class Replica extends AbstractReplica {
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);
         getContext().become(electionRecive());
-        Logger.debug("for "+id+" the coordinator crashed");
+        debug("the coordinator crashed");
         replicas.remove(currentCoordinator); // remove current coordinator
         broadcast(new ElectionStarted(id,currentCoordinator),true);
     }
 
     private void OnHeartBeat(HeartBeat heartBeat) {
-        Logger.debug(id+" recived heartbeat from coordinator "+heartBeat.currentCoordinator);
+        debug("recived heartbeat from coordinator "+heartBeat.currentCoordinator);
 
         CancelTimeout(heartbeatExpireTimer);
         listenForHeartBeat();
