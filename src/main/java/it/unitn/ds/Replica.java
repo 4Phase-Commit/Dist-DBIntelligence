@@ -330,11 +330,13 @@ public class Replica extends AbstractReplica {
                 "[Replica %d] WRITEOK from coordinator: %s",
                 this.id,
                 getSender().path().name()));
+
         CancelTimeout(writeokTimeouts.poll());
         updateSEQN++;
         Update update = this.pendingUpdates.poll();
         AppliedUpdate updateToBeApplied = new AppliedUpdate(update, epoch, updateSEQN);
         history.push(updateToBeApplied);
+
         Logger.log(String.format(
                 "[Replica %d] Applying update: %s",
                 this.id,
@@ -344,15 +346,11 @@ public class Replica extends AbstractReplica {
                 this.id,
                 history));
 
-        if (update.request.index >= this.locations.length || update.request.index < 0) {
-            // TODO: Failure handling. Should this even receive a writeok?
-        } else {
-            locations[update.request.index] = update.request.value;
+        locations[update.request.index] = update.request.value;
 
-            if (update.request.replica == getSelf()) {
-                tell(new AbstractClient.WriteResult(true, update.request.index, update.request.value, this.id),
-                        update.client);
-            }
+        if (update.request.replica == getSelf()) {
+            tell(new AbstractClient.WriteResult(true, update.request.index, update.request.value, this.id),
+                    update.client);
         }
 
     }
@@ -387,18 +385,16 @@ public class Replica extends AbstractReplica {
                     "[Replica %d] Write quorum reached, broadcasting WRITEOK",
                     this.id,
                     getSender().path().name()));
-            broadcast(new WriteOK(), false);
-            // TODO: should this be 1 to count the coordinator's vote?
-            updateACKCount = 0;
 
-            // TODO: Apply update to self
+            broadcast(new WriteOK(), true);
+            updateACKCount = 0;
 
             if (coordinatorUpdateQueue.isEmpty()) {
                 coordinatorBusy = false;
             } else {
                 Update update = coordinatorUpdateQueue.poll();
                 currentUpdateId = update.id;
-                broadcast(update, false);
+                broadcast(update, true);
             }
         }
     }
@@ -435,37 +431,38 @@ public class Replica extends AbstractReplica {
     private void OnWriteRequest(AbstractClient.WriteRequest request) {
         ActorRef client = getSender();
 
-        if (amICoordinator) {
+        if (request.index >= this.locations.length || request.index < 0) {
             Logger.log(String.format(
-                    "[Replica %d] WRITE request (%d, %d) from %s, sending to other replicas",
+                    "[Replica %d] Invalid WRITE request (%d, %d) from %s, rejecting",
                     this.id,
                     request.index,
                     request.value,
                     client.path().name()));
 
-            broadcast(new Update(nextUpdateId++, request, client), false);
-        } else {
-            Logger.log(String.format(
-                    "[Replica %d] WRITE request (%d, %d) from %s, sending to the coordinator",
-                    this.id,
-                    request.index,
-                    request.value,
-                    client.path().name()));
-
-            requests.add(request);
-
-            // The extra step with the update request is needed to forward the client's
-            // ActorRef so we can know who to send the result to.
-            Update update = new Update(null, request, client);
-            tell(new UpdateRequest(update), replicas.get(currentCoordinator));
-
-            fowardTimeouts.add(getContext().system().scheduler().scheduleOnce( // ack timeout
-                    Duration.create(REQUEST_FORWARD_TIMEOUT, TimeUnit.MILLISECONDS),
-                    getSelf(),
-                    new CoordinatorCrashed(currentCoordinator),
-                    getContext().system().dispatcher(),
-                    getSelf()));
+            tell(new AbstractClient.WriteResult(false, request.index, request.value, this.id), client);
+            return;
         }
+
+        Logger.log(String.format(
+                "[Replica %d] WRITE request (%d, %d) from %s, sending to the coordinator",
+                this.id,
+                request.index,
+                request.value,
+                client.path().name()));
+
+        requests.add(request);
+
+        // The extra step with the update request is needed to forward the client's
+        // ActorRef so we can know who to send the result to.
+        Update update = new Update(null, request, client);
+        tell(new UpdateRequest(update), replicas.get(currentCoordinator));
+
+        fowardTimeouts.add(getContext().system().scheduler().scheduleOnce( // ack timeout
+                Duration.create(REQUEST_FORWARD_TIMEOUT, TimeUnit.MILLISECONDS),
+                getSelf(),
+                new CoordinatorCrashed(currentCoordinator),
+                getContext().system().dispatcher(),
+                getSelf()));
     }
 
     /**
@@ -478,12 +475,18 @@ public class Replica extends AbstractReplica {
      */
     private void onUpdateRequets(UpdateRequest updateRequest) {
         Update update = new Update(nextUpdateId++, updateRequest.update.request, updateRequest.update.client);
+
+        Logger.log(String.format(
+                "[Replica %d] UPDATE REQUEST from: %s",
+                this.id,
+                getSender().path().name()));
+
         if (coordinatorBusy) {
             coordinatorUpdateQueue.add(update);
         } else {
             coordinatorBusy = true;
             currentUpdateId = update.id;
-            broadcast(update, false);
+            broadcast(update, true);
         }
     }
 

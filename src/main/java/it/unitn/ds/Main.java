@@ -67,7 +67,28 @@ public class Main {
         system.scheduler().scheduleOnce(
                 java.time.Duration.ofSeconds(1),
                 client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 150),
+                new Client.SendWriteMessage(replicas.get(1), 1, 10),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(1),
+                client,
+                new Client.SendWriteMessage(replicas.get(2), 1, 20),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(1),
+                client,
+                new Client.SendWriteMessage(replicas.get(1), 1, 30),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(1),
+                client,
+                new Client.SendWriteMessage(replicas.get(3), 1, 40),
                 system.dispatcher(),
                 ActorRef.noSender());
 
@@ -75,6 +96,20 @@ public class Main {
                 java.time.Duration.ofSeconds(4),
                 client,
                 new Client.SendReadMessage(replicas.get(0), 1),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(5),
+                client,
+                new Client.SendReadMessage(replicas.get(1), 1),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(6),
+                client,
+                new Client.SendReadMessage(replicas.get(2), 1),
                 system.dispatcher(),
                 ActorRef.noSender());
 
