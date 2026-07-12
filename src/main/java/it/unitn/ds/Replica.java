@@ -203,6 +203,12 @@ public class Replica extends AbstractReplica {
                 return;
             if (entry.getKey() == id && !toMyself)
                 continue;
+            else if (entry.getKey() == id && toMyself) {
+                // Skip network delays if sending to itself
+                entry.getValue().tell(msg, getSelf());
+                continue;
+            }
+
             tell(msg, entry.getValue());
         }
     }
@@ -299,15 +305,15 @@ public class Replica extends AbstractReplica {
                 .match(Synchronization.class, this::OnSynchronization)
                 .match(Update.class, msg -> {
                     OnCanCrashType(msg);
-                    OnUpdate(msg);
+                    onUpdate(msg);
                 })
-                .match(AbstractClient.ReadRequest.class, this::OnReadRequest)
-                .match(AbstractClient.WriteRequest.class, this::OnWriteRequest)
+                .match(AbstractClient.ReadRequest.class, this::onReadRequest)
+                .match(AbstractClient.WriteRequest.class, this::onWriteRequest)
                 .match(UpdateRequest.class, this::onUpdateRequets)
-                .match(UpdateACK.class, this::OnUpdateACK)
+                .match(UpdateACK.class, this::onUpdateACK)
                 .match(WriteOK.class, msg -> {
                     OnCanCrashType(msg);
-                    OnWriteOK(msg);
+                    onWriteOK(msg);
                 })
                 .build();
     }
@@ -334,7 +340,7 @@ public class Replica extends AbstractReplica {
         }
     }
 
-    private void OnWriteOK(WriteOK writeOK) {
+    private void onWriteOK(WriteOK writeOK) {
         Logger.log(String.format(
                 "[Replica %d] WRITEOK from coordinator: %s",
                 this.id,
@@ -376,10 +382,11 @@ public class Replica extends AbstractReplica {
      * if there is one.
      * </p>
      */
-    private void OnUpdateACK(UpdateACK updateACK) {
+    private void onUpdateACK(UpdateACK updateACK) {
         Logger.log(String.format(
-                "[Replica %d] UpdateACK from replica: %s",
+                "[Replica %d] UpdateACK (%d) from replica: %s",
                 this.id,
+                updateACK.id,
                 getSender().path().name()));
 
         if (currentUpdateId != updateACK.id) {
@@ -407,7 +414,7 @@ public class Replica extends AbstractReplica {
         }
     }
 
-    private void OnReadRequest(AbstractClient.ReadRequest request) {
+    private void onReadRequest(AbstractClient.ReadRequest request) {
         ActorRef client = getSender();
 
         Logger.log(String.format(
@@ -436,7 +443,7 @@ public class Replica extends AbstractReplica {
         }
     }
 
-    private void OnWriteRequest(AbstractClient.WriteRequest request) {
+    private void onWriteRequest(AbstractClient.WriteRequest request) {
         ActorRef client = getSender();
 
         if (request.index >= this.locations.length || request.index < 0) {
@@ -463,7 +470,13 @@ public class Replica extends AbstractReplica {
         // The extra step with the update request is needed to forward the client's
         // ActorRef so we can know who to send the result to.
         Update update = new Update(null, request, client);
-        tell(new UpdateRequest(update), replicas.get(currentCoordinator));
+
+        if (id == currentCoordinator) {
+            // Skip network delay for self messages
+            getSelf().tell(new UpdateRequest(update), getSelf());
+        } else {
+            tell(new UpdateRequest(update), replicas.get(currentCoordinator));
+        }
 
         fowardTimeouts.add(getContext().system().scheduler().scheduleOnce( // ack timeout
                 Duration.create(REQUEST_FORWARD_TIMEOUT, TimeUnit.MILLISECONDS),
@@ -503,14 +516,19 @@ public class Replica extends AbstractReplica {
      * to the coordinator and creates the corresponding timeout for the
      * WRITEOK.
      */
-    private void OnUpdate(Update update) {
+    private void onUpdate(Update update) {
         Logger.log(String.format(
                 "[Replica %d] UPDATE from coordinator: %d",
                 this.id,
                 this.currentCoordinator));
         CancelTimeout(fowardTimeouts.poll());
         pendingUpdates.add(update);
-        tell(new UpdateACK(update.id), replicas.get(currentCoordinator));
+        if (currentCoordinator == id) {
+            // Skip network delay for self message
+            getSelf().tell(new UpdateACK(update.id), getSelf());
+        } else {
+            tell(new UpdateACK(update.id), replicas.get(currentCoordinator));
+        }
         writeokTimeouts.add(getContext().system().scheduler().scheduleOnce( // ack timeout
                 Duration.create(WRITEOK_TIMEOUT, TimeUnit.MILLISECONDS),
                 getSelf(),
