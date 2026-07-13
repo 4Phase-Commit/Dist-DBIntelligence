@@ -99,7 +99,7 @@ public class Replica extends AbstractReplica {
     }
 
     private void crashNow() {
-        debug(id + " crashed");
+        debug("crashed");
         // cancel all timeouts
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);
