@@ -341,6 +341,10 @@ public class Replica extends AbstractReplica {
     }
 
     private void onWriteOK(WriteOK writeOK) {
+        if (hasCrashed) {
+            return;
+        }
+
         Logger.log(String.format(
                 "[Replica %d] WRITEOK from coordinator: %s",
                 this.id,
@@ -383,6 +387,10 @@ public class Replica extends AbstractReplica {
      * </p>
      */
     private void onUpdateACK(UpdateACK updateACK) {
+        if (hasCrashed) {
+            return;
+        }
+
         Logger.log(String.format(
                 "[Replica %d] UpdateACK (%d) from replica: %s",
                 this.id,
@@ -415,6 +423,10 @@ public class Replica extends AbstractReplica {
     }
 
     private void onReadRequest(AbstractClient.ReadRequest request) {
+        if (hasCrashed) {
+            return;
+        }
+
         ActorRef client = getSender();
 
         Logger.log(String.format(
@@ -444,6 +456,10 @@ public class Replica extends AbstractReplica {
     }
 
     private void onWriteRequest(AbstractClient.WriteRequest request) {
+        if (hasCrashed) {
+            return;
+        }
+
         ActorRef client = getSender();
 
         if (request.index >= this.locations.length || request.index < 0) {
@@ -495,6 +511,10 @@ public class Replica extends AbstractReplica {
      * </p>
      */
     private void onUpdateRequets(UpdateRequest updateRequest) {
+        if (hasCrashed) {
+            return;
+        }
+
         Update update = new Update(nextUpdateId++, updateRequest.update.request, updateRequest.update.client);
 
         Logger.log(String.format(
@@ -517,6 +537,10 @@ public class Replica extends AbstractReplica {
      * WRITEOK.
      */
     private void onUpdate(Update update) {
+        if (hasCrashed) {
+            return;
+        }
+
         Logger.log(String.format(
                 "[Replica %d] UPDATE from coordinator: %d",
                 this.id,
