@@ -374,6 +374,7 @@ public class Replica extends AbstractReplica {
         sendElection(crashedReplica,newUpdates,electionACKTimeout.currentElection.id);
     }
 
+// add seqno to 0
     private void OnSynchronization(Synchronization synchronization) {
         debug(synchronization.newCoordinator +" is the new leader");
         getContext().become(createReceive());
@@ -458,7 +459,7 @@ public class Replica extends AbstractReplica {
             beginElection();  // the first must send the election directly
         }
 
-////    NOTE: this is the simples implementation where every one send the election msg
+//// NOTE: this is the simples implementation where every one send the election msg
 //        int nextReplica = getNextReplicaIdInRing(id);
 //        ActorRef dst = replicas.get(nextReplica);
 //        Election e = new Election(Map.of(id,new LastUpdate(epoch,updateSEQN)),nextReplica,id);
@@ -473,13 +474,14 @@ public class Replica extends AbstractReplica {
 //                getSelf()));
     }
 
+    // if electionstarted return;
     private void OnCrashedCoordinator(CoordinatorCrashed coordinatorCrashed) {
         CancelTimeout(heartbeatExpireTimer);
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);
         getContext().become(electionRecive());
         debug("the coordinator crashed");
-        replicas.remove(currentCoordinator); // remove current coordinator
+        replicas.remove(currentCoordinator); // remove current coordinator (REMOVE THIS BECAUSE IS REDUNTANT)
         broadcast(new ElectionStarted(id,currentCoordinator),true);
     }
 

@@ -1,6 +1,6 @@
 \section{System Design}
 \subsection{Replica}
-
+\subsubsection{Coordinator}
 To implement the coordinator logic within our distributed system, we integrated all coordinator functionalities directly into the \texttt{Replica} class using dedicated methods. Since a coordinator is inherently also a replica, this architectural choice allows any replica to react to specific messages and seamlessly transition into the coordinator role if it is the next node to be elected. 
 To keep all nodes informed about the identity of the current leader, each replica stores the coordinator's index in a local variable, which is subsequently utilized to forward incoming write requests to the correct destination. Additionally, a boolean flag is provided to verify whether the replica itself is currently acting as the coordinator. When this flag is true, it triggers specific coordinator-only operations, such as broadcasting periodic heartbeat signals. To manage these signals effectively and maintain strict independent tracking, the heartbeat statuses for each replica are mapped and maintained within a dedicated data structure.
 
@@ -9,13 +9,10 @@ Beyond heartbeats, the coordinator is responsible for critical synchronization d
     \item Sending \texttt{WriteOK} messages to the replicas upon reaching a consensus quorum.
     \item Broadcasting synchronization messages immediately after a successful election to align the state of the network.
 \end{itemize}
-
+\subsubsection{Election protocol}
 The election protocol is triggered whenever a replica receives a \texttt{CoordinatorCrashed} message. Upon reception, the replica removes the failed leader from its list of available nodes and broadcasts an \texttt{ElectionStarted} message to initiate the protocol among the remaining peers. To prevent redundant or overlapping election cycles, any replica that receives this message sets an internal flag to true, thereby ignoring subsequent \texttt{ElectionStarted} signals. Replicas then remove the current coordinator from their active set and dynamically shift their operational state from \texttt{Normal Mode} to \texttt{Election Mode}. 
 We decoupled these two operational behaviors to handle concurrent user requests safely during an election phase. Consequently, any write request received while the system is in \texttt{Election Mode} is buffered locally and its forwarding is deferred until the new coordinator has been successfully established.
-To optimize network bandwidth and ensure that ideally only one election message circulates at a time, the election initiation is staggered based on replica identifiers. The replica with the lowest active ID is expected to start the process first. Replicas with higher IDs defer their transmission by a timeout calculated dynamically as:
-\begin{equation}
-\text{Timeout} = 100 \times \text{replica\_id} \text{ ms}
-\end{equation}
+To optimize network bandwidth and ensure that ideally only one election message circulates at a time, the election initiation is staggered based on replica identifiers.
 
 If the lowest-ID replica crashes or fails to initiate the election within this window, the next available node in the virtual ring will take over after its respective timeout expires, and so forth. If a node is delayed but does not crash, multiple election processes might concurrently circulate in the network; however, this does not compromise system correctness, as all replicas will eventually converge on the same coordinator.
 The core of the election protocol strictly follows the project specifications, with an added optimization during the post-election phase. Once a new coordinator is elected, it reverts to \texttt{Normal Mode} and updates its view of active replicas based on which nodes contributed the latest updates during the election phase. 
