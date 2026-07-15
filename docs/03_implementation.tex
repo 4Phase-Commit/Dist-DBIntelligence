@@ -1,1 +1,56 @@
 \section{Implementation}
+\subsection{Replica}
+\subsubsection{HeartBeat}
+As soon as a new coordinator is elected, it immediately initializes dedicated schedulers for each replica. These schedulers are configured with an interval of $1000\text{ ms}$ to individually transmit periodic \texttt{Heartbeat} messages to every active node. 
+
+Conversely, the replicas initialize a countdown timer to monitor the reception of these heartbeats. If a \texttt{Heartbeat} is received within the expected timeframe, the replica cancels the current timeout and schedules a new one for the next interval. To accommodate potential network channel latencies, this timeout is configured to be $100\text{ ms}$ longer than the transmission interval:
+\begin{equation}
+\text{Timeout}_{\text{listen}} = \text{Interval}_{\text{heartbeat}} + 100\text{ ms}
+\end{equation}
+
+In accordance with the project specifications, if a replica does not receive a heartbeat before this timer expires, it infers that the coordinator has crashed. Consequently, it initiates the election protocol by broadcasting an \texttt{ElectionStarted} message to all other replicas. In this scenario, the replica also delivers the message to itself locally—bypassing the network channel to avoid introducing unnecessary transmission delays.
+
+\subsubsection{Election protocol}
+Upon receiving an \texttt{ElectionStarted} message, a replica removes the current coordinator from its active list. As outlined in the system design, only the replica with the smallest index is authorized to immediately initiate the actual election process. The remaining replicas defer their action by a timeout calculated dynamically as:
+\begin{equation}
+\text{Timeout} = 100 \times \text{replica\_id} \text{ ms}
+\end{equation}
+
+if they do not detect the start of the election within their respective timeout window, they assume the primary initiator has crashed or is experiencing severe delays, and subsequently initiate the process themselves.
+
+When a replica receives an \texttt{Election} message, it immediately replies with an \texttt{ACK} to the sender. It then inspects the message payload to verify if its own state information (specifically, its epoch and sequence number) is already present. 
+\begin{itemize}
+    \item \textbf{If its information is missing:} The replica appends its data to the message structure. To preserve immutability, we copy the data into a new instance of our custom data structure—a map associating each \texttt{replica\_id} (represented as an integer) with a \texttt{LastUpdate} object (containing the respective \texttt{epoch} and \texttt{sequence\_number}). Once updated, the replica packages this data into a new \texttt{Election} message, forwards it to the next node in the virtual ring, and starts a timeout tracking the recipient's \texttt{ACK}.
+    \item \textbf{If its information is already present:} This indicates that the message has completed a full loop through all active replicas, meaning a new coordinator can now be elected. 
+\end{itemize}
+
+Before proceeding with the election logic, the replica first checks if it is already acting as the coordinator. This safeguard prevents redundant executions in scenarios where multiple election messages might concurrently circulate. The replica then evaluates the state of all nodes contained within the election message to determine the new coordinator's ID, prioritizing the highest epoch, sequence number, and replica ID as defined in the specifications.
+
+If the calculated coordinator ID matches the replica's own ID:
+\begin{enumerate}
+    \item It promotes itself to the coordinator role by setting its coordinator flag to \texttt{true}.
+    \item It increments the system epoch.
+    \item It generates and sends personalized updates to the corresponding lagging replicas.
+    \item Finally, it starts broadcasting heartbeats and reverts to \texttt{Normal Mode} to resume standard message processing.
+\end{enumerate}
+
+If the calculated ID belongs to another node, the replica forwards the unmodified \texttt{Election} message to the next hop in the ring. It then starts an ID-dependent timeout to await the incoming \texttt{Synchronization} message. If this timer expires without receiving the message, the replica assumes the newly elected coordinator crashed immediately after election, thereby triggering a new election cycle.
+
+If a expected \texttt{ACK} does not arrive within the timeout, the replica identifies the unresponsive neighbor as crashed. The system then evaluates the current phase of the protocol:
+\begin{itemize}
+    \item If the failure occurs during the first phase of the election (where the coordinator is not yet determined and the replica has just appended its own values), the replica simply bypasses the failed node and forwards the election message to the next available successor in the ring.
+    \item If the failure occurs in the second phase, it means the crashed replica had already registered its values. To prevent an entire restart of the election cycle, the replica removes the entries associated with the crashed node from the payload and forwards the modified message to the subsequent node.
+\end{itemize}
+
+Upon receiving the final \texttt{Synchronization} message, the replicas revert to \texttt{Normal Mode}. They increment the epoch, reset the local sequence number, apply the personalized updates received, and flush the queue of pending updates to satisfy the transactional consistency guarantees of the system. Normal heartbeat monitoring is then resumed.
+
+\subsubsection{Crash detection}
+When a crash command is received, its execution depends on the specified crash type. If the crash type is classified as \texttt{Now}, the replica terminates immediately. Otherwise, the crash is deferred, and its configuration parameters are stored within local variables.
+
+To implement this deferred crash detection, we designed a dedicated evaluation function. Every time a replica receives a message of a type listed in the crash configuration, this function is invoked to:
+\begin{enumerate}
+    \item Check if a pending crash has been scheduled.
+    \item Increment a message counter tracking the specific message type.
+    \item Compare the counter against the threshold specified in the crash command.
+\end{enumerate}
+Once the incoming message count matches the crash trigger threshold, the replica executes an immediate shutdown.

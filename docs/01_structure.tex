@@ -8,7 +8,7 @@ The most critical components are detailed below:
     \item \textbf{Replica}: A concrete class that defines the specific operational behavior of a replica. In this project, replicas handle incoming read requests and forward write operations to the coordinator. The coordinator then manages the update lifecycle and ensures consistency via a Two-Phase Commit-like protocol. The coordinator itself is a specialized replica tasked with additional administrative duties, such as broadcasting periodic heartbeats to assert its liveness, as detailed in the subsequent sections.
 \end{itemize}
 
-\subsection{Replica Functionality and State Management}
+\subsection{Abstract replica}
 To maintain a clean, modular, and maintainable codebase, we introduced several utility methods within the replica implementation. These helpers manage heartbeat mechanisms, determine the next active node in the ring topology (thereby establishing a virtual ring based on replica identifiers), execute the leader election algorithm to designate a new coordinator, and handle repetitive tasks such as broadcasting messages, canceling timeouts, and constructing election payloads.
 
 To properly manage state transitions and failures, we implemented three distinct receive behaviors within the Akka actor configuration:

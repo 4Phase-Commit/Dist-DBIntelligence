@@ -580,6 +580,7 @@ public class Replica extends AbstractReplica {
         sendElection(crashedReplica, newUpdates, electionACKTimeout.currentElection.id);
     }
 
+    // add seqno to 0
     private void OnSynchronization(Synchronization synchronization) {
         debug(synchronization.newCoordinator + " is the new leader");
         getContext().become(createReceive());
@@ -684,13 +685,14 @@ public class Replica extends AbstractReplica {
         // getSelf()));
     }
 
+    // if electionstarted return;
     private void OnCrashedCoordinator(CoordinatorCrashed coordinatorCrashed) {
         CancelTimeout(heartbeatExpireTimer);
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);
         getContext().become(electionRecive());
         debug("the coordinator crashed");
-        replicas.remove(currentCoordinator); // remove current coordinator
+        replicas.remove(currentCoordinator); // remove current coordinator (REMOVE THIS BECAUSE IS REDUNTANT)
         broadcast(new ElectionStarted(id, currentCoordinator), true);
     }
 
