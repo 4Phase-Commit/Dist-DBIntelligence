@@ -399,7 +399,6 @@ public abstract class AbstractReplica extends AbstractActor {
         public final int id;
 
         public Election(Map<Integer, LastUpdate> updates, int toReplica, int id) {
-
             this.updates = updates;
             this.toReplica = toReplica;
             this.id = id;

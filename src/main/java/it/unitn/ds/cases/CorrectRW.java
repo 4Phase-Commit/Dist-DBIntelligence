@@ -9,6 +9,12 @@ import it.unitn.ds.Client;
 /**
  * Case in which a client performs a bunch of reads and writes
  * to different replicas in a correct system.
+ * <p>
+ * Expectations:
+ * <ul>
+ * <li></li>
+ * </ul>
+ * </p>
  */
 public class CorrectRW extends AbstractCase {
     public CorrectRW(String systemName, int numReplicas, int coordinatorId) {
@@ -35,6 +41,20 @@ public class CorrectRW extends AbstractCase {
                 java.time.Duration.ofSeconds(1),
                 client,
                 new Client.SendWriteMessage(replicas.get(1), 1, 10),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(1),
+                client,
+                new Client.SendWriteMessage(replicas.get(1), 1, 11),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(1),
+                client,
+                new Client.SendWriteMessage(replicas.get(1), 1, 12),
                 system.dispatcher(),
                 ActorRef.noSender());
 

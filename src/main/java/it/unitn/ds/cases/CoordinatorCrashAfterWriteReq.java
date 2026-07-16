@@ -7,24 +7,22 @@ import akka.actor.ActorRef;
 import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.Client;
 
+// TODO: Do we want the replica to drop the update instead?
 /**
- * Case in which a coordinator crashes during a write operation
- * after sending out the update messages but before sending
- * any WRITEOK.
+ * Case in which the coordinator crashes after receiving a write request
+ * from a replica, before sending any update messages.
+ * <br>
  * <p>
  * Expectations:
  * <ul>
- * <li>A new coordinator is elected</li>
- * <li>
- * If enough other replicas have an update in the pending list to reach
- * the quorum then the update is restored (during the SYNCHRONIZATION phase)
- * </li>
+ * <li>A new leader is elected</li>
+ * <li>The replica sees the update request was dropped and tries sending it
+ * again to the new coordinator</li>
  * </ul>
  * </p>
  */
-public class CoordinatorCrashBeforeWOK extends AbstractCase {
-
-    public CoordinatorCrashBeforeWOK(String systemName, int numReplicas, int coordinatorId) {
+public class CoordinatorCrashAfterWriteReq extends AbstractCase {
+    public CoordinatorCrashAfterWriteReq(String systemName, int numReplicas, int coordinatorId) {
         super(systemName, numReplicas, coordinatorId);
     }
 
@@ -41,29 +39,22 @@ public class CoordinatorCrashBeforeWOK extends AbstractCase {
 
         system.scheduler().scheduleOnce(
                 java.time.Duration.ofSeconds(0),
-                startingCoordinator,
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Update, 1),
+                client,
+                new Client.SendWriteMessage(replicas.get(1), 1, 100),
                 system.dispatcher(),
                 ActorRef.noSender());
 
         system.scheduler().scheduleOnce(
                 java.time.Duration.ofSeconds(0),
+                startingCoordinator,
+                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Now, 0),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(1),
                 client,
                 new Client.SendReadMessage(replicas.get(1), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 30),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 40),
                 system.dispatcher(),
                 ActorRef.noSender());
 

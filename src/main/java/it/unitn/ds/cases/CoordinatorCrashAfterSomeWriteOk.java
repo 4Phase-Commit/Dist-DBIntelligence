@@ -1,3 +1,4 @@
+
 package it.unitn.ds.cases;
 
 import java.io.IOException;
@@ -8,28 +9,26 @@ import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.Client;
 
 /**
- * Case in which a coordinator crashes during a write operation
- * after sending out the update messages but before sending
- * any WRITEOK.
+ * Case in which the coordinator crashes after issuing some
+ * WRITEOK messages for an update but not all.
+ * <br>
  * <p>
  * Expectations:
  * <ul>
- * <li>A new coordinator is elected</li>
- * <li>
- * If enough other replicas have an update in the pending list to reach
- * the quorum then the update is restored (during the SYNCHRONIZATION phase)
- * </li>
+ * <li>A new leader is elected, among those who have received the WRITEOK
+ * (because of the higher epoch/sequence number pair)</li>
+ * <li>Other replicas receive the update during the SYNCHRONIZATION phase</li>
  * </ul>
  * </p>
  */
-public class CoordinatorCrashBeforeWOK extends AbstractCase {
-
-    public CoordinatorCrashBeforeWOK(String systemName, int numReplicas, int coordinatorId) {
+public class CoordinatorCrashAfterSomeWriteOk extends AbstractCase {
+    public CoordinatorCrashAfterSomeWriteOk(String systemName, int numReplicas, int coordinatorId) {
         super(systemName, numReplicas, coordinatorId);
     }
 
     @Override
     public void run() {
+        // TODO: fix once crash management is changed
         ActorRef client = system.actorOf(
                 Client.props(
                         1,
@@ -39,20 +38,15 @@ public class CoordinatorCrashBeforeWOK extends AbstractCase {
 
         ActorRef startingCoordinator = this.replicas.get(STARTING_COORDINATOR_ID);
 
+        // Send crash message
         system.scheduler().scheduleOnce(
                 java.time.Duration.ofSeconds(0),
                 startingCoordinator,
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Update, 1),
+                new AbstractReplica.Crash(AbstractReplica.Crash.Type.WriteOK, 2),
                 system.dispatcher(),
                 ActorRef.noSender());
 
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(0),
-                client,
-                new Client.SendReadMessage(replicas.get(1), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
-
+        // Send write
         system.scheduler().scheduleOnce(
                 java.time.Duration.ofSeconds(1),
                 client,
@@ -60,13 +54,27 @@ public class CoordinatorCrashBeforeWOK extends AbstractCase {
                 system.dispatcher(),
                 ActorRef.noSender());
 
+        // Reads to check that the update was propagated successfully
         system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
+                java.time.Duration.ofSeconds(3),
                 client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 40),
+                new Client.SendReadMessage(replicas.get(1), 1),
                 system.dispatcher(),
                 ActorRef.noSender());
 
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(3),
+                client,
+                new Client.SendReadMessage(replicas.get(2), 1),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(3),
+                client,
+                new Client.SendReadMessage(replicas.get(3), 1),
+                system.dispatcher(),
+                ActorRef.noSender());
         try {
             System.out.println(">>> Press ENTER to continue");
             System.in.read();

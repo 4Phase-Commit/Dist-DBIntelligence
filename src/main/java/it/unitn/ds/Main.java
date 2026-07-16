@@ -10,6 +10,8 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.Props;
 import it.unitn.ds.AbstractReplica.InitSystem;
+import it.unitn.ds.cases.CoordinatorCrashAfterSomeWriteOk;
+import it.unitn.ds.cases.CoordinatorCrashAfterWriteReq;
 import it.unitn.ds.cases.CoordinatorCrashBeforeWOK;
 import it.unitn.ds.cases.CorrectRW;
 import scala.concurrent.duration.Duration;
@@ -33,6 +35,15 @@ public class Main {
         // CoordinatorCrashBeforeWOK("CoordinatorCrashBeforeWOK",
         // 4, 0);
         // coordinatorCrashBeforeWOK.run();
+
+        // A coordinator crashes after some (but not all) WRITEOK messages
+        // CoordinatorCrashAfterSomeWriteOk execCase = new
+        // CoordinatorCrashAfterSomeWriteOk("SomeWOK", 4, 0);
+        // execCase.run();
+
+        // CoordinatorCrashAfterWriteReq execCase = new
+        // CoordinatorCrashAfterWriteReq("AfterReq", 4, 0);
+        // execCase.run();
 
         // TODO: Create your clients
 

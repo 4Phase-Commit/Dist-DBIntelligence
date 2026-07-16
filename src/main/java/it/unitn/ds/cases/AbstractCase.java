@@ -1,5 +1,6 @@
 package it.unitn.ds.cases;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,7 +16,7 @@ import it.unitn.ds.Replica;
  * new cases.
  */
 public class AbstractCase {
-    private int N_REPLICAS;
+    protected int N_REPLICAS;
     protected int STARTING_COORDINATOR_ID;
 
     protected final ActorSystem system;
@@ -43,5 +44,12 @@ public class AbstractCase {
     }
 
     public void run() {
+        try {
+            System.out.println(">>> Press ENTER to continue");
+            System.in.read();
+        } catch (IOException e) {
+        }
+
+        system.terminate();
     }
 }

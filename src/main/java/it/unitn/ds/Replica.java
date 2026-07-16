@@ -17,8 +17,8 @@ public class Replica extends AbstractReplica {
     private static final int HEARTBEAT_TIMEOUT_MS = 1100;
     private static final int ELECTIONACK_TIMEOUT_MS = 3000;
     public static final int ELECTION_TIMEOUT_MULTIPLIER = 100;
-    public static final int REQUEST_FORWARD_TIMEOUT = 200;
-    public static final int WRITEOK_TIMEOUT = 200;
+    public static final int REQUEST_FORWARD_TIMEOUT = 2000;
+    public static final int WRITEOK_TIMEOUT = 1000;
     public static final int SYNCHRONIZAZION_TIMEOUT = 500;
 
     private boolean amICoordinator;
@@ -44,9 +44,21 @@ public class Replica extends AbstractReplica {
     private final Queue<Cancellable> fowardTimeouts;
     private final Queue<Cancellable> writeokTimeouts;
     private final Queue<Cancellable> electionAckExpireTimers;
+    private final Stack<AppliedUpdate> history;
+
+    public record WriteReq(ActorRef client, AbstractClient.WriteRequest request) {
+    }
+
+    private enum State {
+        NORMAL,
+        ELECTION
+    }
+
+    private State state = State.NORMAL;
+
+    private final Queue<WriteReq> writeRequests;
     private final Queue<Serializable> requests;
     private final Queue<Update> pendingUpdates;
-    private final Stack<AppliedUpdate> history;
 
     private int[] locations;
 
@@ -60,6 +72,7 @@ public class Replica extends AbstractReplica {
         // TODO: implement
         epoch = 0;
         updateSEQN = 0;
+        writeRequests = new ArrayDeque<>();
         requests = new ArrayDeque<>();
         history = new Stack<>();
         pendingUpdates = new ArrayDeque<>();
@@ -199,6 +212,7 @@ public class Replica extends AbstractReplica {
 
     private void broadcast(Serializable msg, boolean toMyself) {
         for (Map.Entry<Integer, ActorRef> entry : replicas.entrySet()) {
+            // TODO: handle crashes for processed messages
             if (isElectionFirstPhase || hasCrashed)
                 return;
             if (entry.getKey() == id && !toMyself)
@@ -259,6 +273,9 @@ public class Replica extends AbstractReplica {
         }
     }
 
+    private class Drain implements Serializable {
+    }
+
     public final Receive crashedReceive() {
         return createBaseReceiveBuilder()
                 .matchAny(a -> {
@@ -309,6 +326,7 @@ public class Replica extends AbstractReplica {
                 })
                 .match(AbstractClient.ReadRequest.class, this::onReadRequest)
                 .match(AbstractClient.WriteRequest.class, this::onWriteRequest)
+                .match(Drain.class, this::onDrain)
                 .match(UpdateRequest.class, this::onUpdateRequets)
                 .match(UpdateACK.class, this::onUpdateACK)
                 .match(WriteOK.class, msg -> {
@@ -366,6 +384,7 @@ public class Replica extends AbstractReplica {
                 history));
 
         locations[update.request.index] = update.request.value;
+        callbackOnUpdateApplied(update.request.index, update.request.value);
 
         if (update.request.replica == getSelf()) {
             tell(new AbstractClient.WriteResult(true, update.request.index, update.request.value, this.id),
@@ -475,17 +494,36 @@ public class Replica extends AbstractReplica {
         }
 
         Logger.log(String.format(
-                "[Replica %d] WRITE request (%d, %d) from %s, sending to the coordinator",
+                "[Replica %d] WRITE request (%d, %d) from %s, adding to queue",
                 this.id,
                 request.index,
                 request.value,
                 client.path().name()));
 
-        requests.add(request);
+        writeRequests.add(new WriteReq(client, request));
+        getSelf().tell(new Drain(), getSelf());
+
+    }
+
+    private void onDrain(Drain d) {
+        if (state != State.NORMAL || writeRequests.isEmpty()) {
+            return;
+        }
+
+        WriteReq r = writeRequests.poll();
+
+        Logger.log(String.format(
+                "[Replica %d] WRITE request (%d, %d) from %s, sending to the coordinator",
+                this.id,
+                r.request.index,
+                r.request.value,
+                r.client.path().name()));
+
+        requests.add(r.request);
 
         // The extra step with the update request is needed to forward the client's
         // ActorRef so we can know who to send the result to.
-        Update update = new Update(null, request, client);
+        Update update = new Update(null, r.request, r.client);
 
         if (id == currentCoordinator) {
             // Skip network delay for self messages
@@ -500,6 +538,10 @@ public class Replica extends AbstractReplica {
                 new CoordinatorCrashed(currentCoordinator),
                 getContext().system().dispatcher(),
                 getSelf()));
+
+        if (!writeRequests.isEmpty()) {
+            getSelf().tell(new Drain(), getSelf());
+        }
     }
 
     /**
@@ -584,6 +626,8 @@ public class Replica extends AbstractReplica {
     private void OnSynchronization(Synchronization synchronization) {
         debug(synchronization.newCoordinator + " is the new leader");
         getContext().become(createReceive());
+        state = State.NORMAL;
+        getSelf().tell(new Drain(), getSelf());
         CancelTimeout(electionTimeout); // delete sync timeout
         epoch++;
         currentCoordinator = synchronization.newCoordinator;
@@ -622,6 +666,8 @@ public class Replica extends AbstractReplica {
                 epoch++;
                 sendSyncUpdates(election);
                 getContext().become(createReceive());
+                state = State.NORMAL;
+                getSelf().tell(new Drain(), getSelf());
                 beginHeartBeat();
                 replicas.keySet().retainAll(election.updates.keySet()); // update the replica set
             } else { // am not the leader to pass to the next one
@@ -691,6 +737,7 @@ public class Replica extends AbstractReplica {
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);
         getContext().become(electionRecive());
+        state = State.ELECTION;
         debug("the coordinator crashed");
         replicas.remove(currentCoordinator); // remove current coordinator (REMOVE THIS BECAUSE IS REDUNTANT)
         broadcast(new ElectionStarted(id, currentCoordinator), true);
