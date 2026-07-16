@@ -112,7 +112,7 @@ public class Replica extends AbstractReplica {
     }
 
     private void crashNow() {
-        debug(id + " crashed");
+        debug("crashed");
         // cancel all timeouts
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);
@@ -135,7 +135,7 @@ public class Replica extends AbstractReplica {
         replicas = new TreeMap<>(sysInit.group);
         heartbeatSchedulers = new HashMap<>(replicas.size());
 
-        debug("I am " + id + " and i am the coordinator " + amICoordinator);
+        debug("am i the coordinator ?" + amICoordinator);
 
         if (!amICoordinator)
             return;
