@@ -42,7 +42,7 @@ public class CoordinatorCrashAfterSomeWriteOk extends AbstractCase {
         system.scheduler().scheduleOnce(
                 java.time.Duration.ofSeconds(0),
                 startingCoordinator,
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.WriteOK, 2),
+                new AbstractReplica.Crash(AbstractReplica.Crash.Type.WriteOK, 3),
                 system.dispatcher(),
                 ActorRef.noSender());
 
@@ -73,6 +73,14 @@ public class CoordinatorCrashAfterSomeWriteOk extends AbstractCase {
                 java.time.Duration.ofSeconds(3),
                 client,
                 new Client.SendReadMessage(replicas.get(3), 1),
+                system.dispatcher(),
+                ActorRef.noSender());
+
+        // New write to check if <e, i> were updated correctly
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofSeconds(4),
+                client,
+                new Client.SendWriteMessage(replicas.get(3), 1, 40),
                 system.dispatcher(),
                 ActorRef.noSender());
         try {

@@ -42,7 +42,7 @@ public class CoordinatorCrashBeforeWOK extends AbstractCase {
         system.scheduler().scheduleOnce(
                 java.time.Duration.ofSeconds(0),
                 startingCoordinator,
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Update, 1),
+                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Update, 3),
                 system.dispatcher(),
                 ActorRef.noSender());
 

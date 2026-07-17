@@ -18,8 +18,8 @@ public class Replica extends AbstractReplica {
     private static final int ELECTIONACK_TIMEOUT_MS = 3000;
     public static final int ELECTION_TIMEOUT_MULTIPLIER = 100;
     public static final int REQUEST_FORWARD_TIMEOUT = 2000;
-    public static final int WRITEOK_TIMEOUT = 1000;
-    public static final int SYNCHRONIZAZION_TIMEOUT = 500;
+    public static final int WRITEOK_TIMEOUT = 2000;
+    public static final int SYNCHRONIZAZION_TIMEOUT = 2000;
 
     private boolean amICoordinator;
     private int currentCoordinator;
@@ -38,12 +38,16 @@ public class Replica extends AbstractReplica {
     private Crash currentCrash;
 
     private TreeMap<Integer, ActorRef> replicas;
+
     private Map<Integer, Cancellable> heartbeatSchedulers;
     private Cancellable heartbeatExpireTimer;
     private Cancellable electionTimeout;
+    private Cancellable restoreTimeout;
     private final Queue<Cancellable> fowardTimeouts;
     private final Queue<Cancellable> writeokTimeouts;
     private final Queue<Cancellable> electionAckExpireTimers;
+
+    private final List<List<Update>> coordinatorPendingRecovery;
     private final Stack<AppliedUpdate> history;
 
     public record WriteReq(ActorRef client, AbstractClient.WriteRequest request) {
@@ -79,6 +83,7 @@ public class Replica extends AbstractReplica {
         electionAckExpireTimers = new ArrayDeque<>();
         fowardTimeouts = new ArrayDeque<>();
         writeokTimeouts = new ArrayDeque<>();
+        coordinatorPendingRecovery = new ArrayList<>();
 
         locations = new int[POSITIONS_LIST_LENGTH];
         nextUpdateId = 0;
@@ -212,7 +217,8 @@ public class Replica extends AbstractReplica {
 
     private void broadcast(Serializable msg, boolean toMyself) {
         for (Map.Entry<Integer, ActorRef> entry : replicas.entrySet()) {
-            // TODO: handle crashes for processed messages
+            OnCanCrashType(msg);
+
             if (isElectionFirstPhase || hasCrashed)
                 return;
             if (entry.getKey() == id && !toMyself)
@@ -266,14 +272,33 @@ public class Replica extends AbstractReplica {
             if (entry.getKey() == id)
                 continue;
             int historyDiff = election.updates.get(id).epochSEQN - entry.getValue().epochSEQN;
-            List<Update> listOfUpdatesToApply = IntStream.range(0, historyDiff)
-                    .mapToObj(i -> history.get(history.size() - 1 - i).update)
+            List<AppliedUpdate> listOfUpdatesToApply = IntStream.range(0, historyDiff)
+                    .mapToObj(i -> history.get(history.size() - 1 - i))
                     .toList(); // immutable for transmission
             tell(new Synchronization(listOfUpdatesToApply, id), replicas.get(entry.getKey()));
         }
     }
 
     private class Drain implements Serializable {
+    }
+
+    private class ReplicaPendingUpdates implements Serializable {
+        List<Update> pending;
+
+        public ReplicaPendingUpdates(Queue updateQueue) {
+            pending = Collections.unmodifiableList(new ArrayList<>(updateQueue));
+        }
+    }
+
+    private class PendingRestore implements Serializable {
+        List<Update> toRestore;
+
+        public PendingRestore(List<Update> updates) {
+            toRestore = Collections.unmodifiableList(new ArrayList<>(updates));
+        }
+    }
+
+    private class RestoreTimeout implements Serializable {
     }
 
     public final Receive crashedReceive() {
@@ -295,6 +320,9 @@ public class Replica extends AbstractReplica {
                 .match(ElectionACK.class, this::OnElectionACK)
                 .match(ElectionACKTimeout.class, this::OnElectionACKTimeout)
                 .match(Synchronization.class, this::OnSynchronization)
+                .match(ReplicaPendingUpdates.class, this::onReplicaPendingUpdates)
+                .match(PendingRestore.class, this::onPendingRestore)
+                .match(RestoreTimeout.class, this::onRestoreTimeout)
                 // add requests
                 .matchAny(a -> {
                 })
@@ -474,6 +502,9 @@ public class Replica extends AbstractReplica {
         }
     }
 
+    /**
+     * Adds new write requests from clients to the {@code writeRequests} queue
+     */
     private void onWriteRequest(AbstractClient.WriteRequest request) {
         if (hasCrashed) {
             return;
@@ -502,9 +533,11 @@ public class Replica extends AbstractReplica {
 
         writeRequests.add(new WriteReq(client, request));
         getSelf().tell(new Drain(), getSelf());
-
     }
 
+    /**
+     * Function that handles write requests from the {@code writeRequests} queue
+     */
     private void onDrain(Drain d) {
         if (state != State.NORMAL || writeRequests.isEmpty()) {
             return;
@@ -625,16 +658,122 @@ public class Replica extends AbstractReplica {
     // add seqno to 0
     private void OnSynchronization(Synchronization synchronization) {
         debug(synchronization.newCoordinator + " is the new leader");
+
+        CancelTimeout(electionTimeout); // delete sync timeout
+        epoch++;
+        updateSEQN = 0;
+        currentCoordinator = synchronization.newCoordinator;
+        debug("must apply these updates " + synchronization.updates);
+
+        // Assuming all updates are ordered already
+        for (AppliedUpdate u : synchronization.updates) {
+            history.push(u);
+            locations[u.update.request.index] = u.update.request.value;
+            callbackOnUpdateApplied(u.update.request.index, u.update.request.value);
+        }
+
+        // Immutability is handled by the message class
+        tell(new ReplicaPendingUpdates(pendingUpdates), replicas.get(currentCoordinator));
+        restoreTimeout = getContext().system().scheduler().scheduleOnce(
+                Duration.create((long) SYNCHRONIZAZION_TIMEOUT * (indexOfReplica(id) + 1),
+                        TimeUnit.MILLISECONDS),
+                getSelf(),
+                new RestoreTimeout(),
+                getContext().system().dispatcher(),
+                getSelf());
+    }
+
+    /**
+     * After a SYNCHRONIZATION, replicas send their pendingUpdates queues to
+     * the coordinator with the goal to restore updates that may have been
+     * acknowledged by a quorum before the previous coordinator crashed.
+     *
+     * The coordinator selects the eligible updates and sends them back to the
+     * replicas.
+     */
+    private void onReplicaPendingUpdates(ReplicaPendingUpdates updates) {
+        coordinatorPendingRecovery.add(updates.pending);
+
+        if (coordinatorPendingRecovery.size() >= (replicas.size() / 2) + 1) {
+            Map<Integer, Update> unique = new LinkedHashMap<>();
+            coordinatorPendingRecovery.stream()
+                    .flatMap(List::stream)
+                    .forEach(update -> unique.putIfAbsent(update.id, update));
+
+            Set<Integer> appliedIds = history.stream()
+                    .map(a -> a.update.id)
+                    .collect(Collectors.toSet());
+
+            List<Update> toPropagate = unique.values().stream()
+                    .filter(u -> !appliedIds.contains(u.id))
+                    .toList();
+
+            // Update the next id with the max one + 1
+            this.nextUpdateId = toPropagate.stream()
+                    .mapToInt(update -> update.id)
+                    .max()
+                    .orElse(history.isEmpty() ? 0 : history.get(history.size() - 1).update.id) + 1;
+
+            log("RESTORING pending updates: " + toPropagate + " with nextUpdateId=" + nextUpdateId);
+
+            broadcast(new PendingRestore(toPropagate), false);
+
+            // Apply updates to self
+            for (Update u : toPropagate) {
+                AppliedUpdate a = new AppliedUpdate(u, epoch, updateSEQN++);
+                history.add(a);
+                locations[a.update.request.index] = a.update.request.value;
+                callbackOnUpdateApplied(a.update.request.index, a.update.request.value);
+            }
+
+            // End of protocol
+            getContext().become(createReceive());
+            state = State.NORMAL;
+            getSelf().tell(new Drain(), getSelf());
+            beginHeartBeat();
+        }
+    }
+
+    /**
+     * Receive the new list of pending updates to be restored from the
+     * new coordinator.
+     * <p>
+     * This is safe because:
+     * <ul>
+     * <li>If an update has reached the quorum there is at least one alive replica
+     * that has it in the pending queue</li>
+     * <li>If the coordinator crashed before sending the updates to restore then a
+     * correct replica will still have them in the pending queue and will send them
+     * to the new coordinator</li>
+     * <li>If the coordinator crashes after sending the updates to restore then the
+     * receiving replica will apply them and
+     * will propagate them after winning the next election</li>
+     * </ul>
+     * </p>
+     */
+    private void onPendingRestore(PendingRestore restore) {
+        CancelTimeout(restoreTimeout);
+
+        // Apply updates
+        for (Update u : restore.toRestore) {
+            AppliedUpdate a = new AppliedUpdate(u, epoch, updateSEQN++);
+            history.add(a);
+            locations[a.update.request.index] = a.update.request.value;
+            callbackOnUpdateApplied(a.update.request.index, a.update.request.value);
+        }
+
+        // Switch back to normal context
         getContext().become(createReceive());
         state = State.NORMAL;
         getSelf().tell(new Drain(), getSelf());
-        CancelTimeout(electionTimeout); // delete sync timeout
-        epoch++;
-        currentCoordinator = synchronization.newCoordinator;
-        debug("must apply these updates " + synchronization.updates);
-        // TODO: apply all history
-        pendingUpdates.clear(); // all pending updates are lost and not applied ever
+
+        pendingUpdates.clear();
         listenForHeartBeat();
+    }
+
+    private void onRestoreTimeout(RestoreTimeout timeout) {
+        log("Restore timeout, coordinator crashed");
+        OnCrashedCoordinator(new CoordinatorCrashed(currentCoordinator));
     }
 
     private void OnElectionACK(ElectionACK electionACK) {
@@ -663,12 +802,10 @@ public class Replica extends AbstractReplica {
             if (newCoordinator == id) { // elect me as the leader
                 debug("is the leader");
                 amICoordinator = true;
+                currentCoordinator = id;
                 epoch++;
+                updateSEQN = 0;
                 sendSyncUpdates(election);
-                getContext().become(createReceive());
-                state = State.NORMAL;
-                getSelf().tell(new Drain(), getSelf());
-                beginHeartBeat();
                 replicas.keySet().retainAll(election.updates.keySet()); // update the replica set
             } else { // am not the leader to pass to the next one
                 debug("Cannot be coordinator but " + newCoordinator + " should be");
@@ -744,7 +881,7 @@ public class Replica extends AbstractReplica {
     }
 
     private void OnHeartBeat(HeartBeat heartBeat) {
-        debug("recived heartbeat from coordinator " + heartBeat.currentCoordinator);
+        debug("received heartbeat from coordinator " + heartBeat.currentCoordinator);
 
         CancelTimeout(heartbeatExpireTimer);
         listenForHeartBeat();

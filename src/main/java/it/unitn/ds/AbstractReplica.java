@@ -550,10 +550,10 @@ public abstract class AbstractReplica extends AbstractActor {
     }
 
     public static class Synchronization implements Serializable {
-        public final List<Update> updates;
+        public final List<AppliedUpdate> updates;
         public final int newCoordinator;
 
-        public Synchronization(List<Update> updates, int newCoordinator) {
+        public Synchronization(List<AppliedUpdate> updates, int newCoordinator) {
             this.updates = updates;
             this.newCoordinator = newCoordinator;
         }

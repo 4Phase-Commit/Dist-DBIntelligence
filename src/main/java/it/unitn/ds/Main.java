@@ -27,8 +27,8 @@ public class Main {
         Logger.setDebugEnabled(true);
 
         // Testing a client execution and r/w logic for replicas
-        CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
-        correctRW.run();
+        // CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
+        // correctRW.run();
 
         // TODO: work in progress
         // CoordinatorCrashBeforeWOK coordinatorCrashBeforeWOK = new
@@ -37,9 +37,9 @@ public class Main {
         // coordinatorCrashBeforeWOK.run();
 
         // A coordinator crashes after some (but not all) WRITEOK messages
-        // CoordinatorCrashAfterSomeWriteOk execCase = new
-        // CoordinatorCrashAfterSomeWriteOk("SomeWOK", 4, 0);
-        // execCase.run();
+        // TODO: Investigate why the Replica_3 detects a non existent coordinator crash
+        CoordinatorCrashAfterSomeWriteOk execCase = new CoordinatorCrashAfterSomeWriteOk("SomeWOK", 4, 0);
+        execCase.run();
 
         // CoordinatorCrashAfterWriteReq execCase = new
         // CoordinatorCrashAfterWriteReq("AfterReq", 4, 0);
