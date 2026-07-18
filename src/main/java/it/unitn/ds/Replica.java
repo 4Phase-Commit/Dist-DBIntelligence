@@ -209,10 +209,12 @@ public class Replica extends AbstractReplica {
     }
 
     private void CancelTimeout(Queue<Cancellable> timeouts) {
-        for (Cancellable timeout : timeouts)
+        while (!timeouts.isEmpty()) {
+            Cancellable timeout = timeouts.poll();
             if (timeout != null) {
                 timeout.cancel();
             }
+        }
     }
 
     private void broadcast(Serializable msg, boolean toMyself) {
@@ -319,7 +321,7 @@ public class Replica extends AbstractReplica {
                 .match(ElectionTimeout.class, this::OnElectionTimeout)
                 .match(ElectionACK.class, this::OnElectionACK)
                 .match(ElectionACKTimeout.class, this::OnElectionACKTimeout)
-                .match(Synchronization.class, this::OnSynchronization)
+                .match(Synchronization.class, this::onSynchronization)
                 .match(ReplicaPendingUpdates.class, this::onReplicaPendingUpdates)
                 .match(PendingRestore.class, this::onPendingRestore)
                 .match(RestoreTimeout.class, this::onRestoreTimeout)
@@ -347,7 +349,7 @@ public class Replica extends AbstractReplica {
                 .match(ElectionTimeout.class, this::OnElectionTimeout)
                 .match(ElectionACK.class, this::OnElectionACK)
                 .match(ElectionACKTimeout.class, this::OnElectionACKTimeout)
-                .match(Synchronization.class, this::OnSynchronization)
+                .match(Synchronization.class, this::onSynchronization)
                 .match(Update.class, msg -> {
                     OnCanCrashType(msg);
                     onUpdate(msg);
@@ -656,7 +658,7 @@ public class Replica extends AbstractReplica {
     }
 
     // add seqno to 0
-    private void OnSynchronization(Synchronization synchronization) {
+    private void onSynchronization(Synchronization synchronization) {
         debug(synchronization.newCoordinator + " is the new leader");
 
         CancelTimeout(electionTimeout); // delete sync timeout
