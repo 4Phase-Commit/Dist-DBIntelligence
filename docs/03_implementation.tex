@@ -10,6 +10,34 @@ Conversely, the replicas initialize a countdown timer to monitor the reception o
 
 In accordance with the project specifications, if a replica does not receive a heartbeat before this timer expires, it infers that the coordinator has crashed. Consequently, it initiates the election protocol by broadcasting an \texttt{ElectionStarted} message to all other replicas. In this scenario, the replica also delivers the message to itself locally—bypassing the network channel to avoid introducing unnecessary transmission delays.
 
+\subsubsection{Timeouts}
+Due to the assumption of having reliable, FIFO communication channels as well as knowing that crashed nodes never recover, timeouts
+were implemented as queues of \texttt{Cancellable} timeouts. New timeouts are added to the queue and they fire a timeout message when they
+expire. When a timeout needs to be canceled it is first popped from the queue. This is safe because of the FIFO channels, which ensure
+messages arrive, are processed (and therefore also answered) in order so there is no risk of cancelling the wrong timeout. If one timeout
+expires then the recipient must have crashed, meaning that all other timeouts in the queue will eventually expire too. Timeouts are
+cancelled during elections.
+
+\subsubsection{Update protocol}
+When a write request is received by a replica it is added to a queue. Whenever the replica is ready (i.e. there's no election going on),
+it begins sending the enqueued messages to the coordinator as \texttt{UpdateRequest}. The requests include the \texttt{ActorRef}
+of the sender to allow for sending the result to the client. The coordinator assigns an ID to each update (a monotonically increasing integer)
+and adds it to a queue. Updates from the queue are broadcast to all replicas, including the coordinator itself. 
+
+Note that broadcast messages sent to oneself will ignore the simulated network delays to simulate the use of internal message passing.
+This was implemented using Akka's \texttt{tell} function instead of the custom one defined in \texttt{AbstractReplica}.
+Messages sent to different replicas will use the network delay as normal.
+
+Upon receiving an \texttt{Update} message, replicas add the update to a pending updates queue and respond to the coordinator with an
+\texttt{UpdateACK}, containing the ID of the update. A timeout is issued for the expected \texttt{WRITEOK} message.\
+The coordinator keeps count of how many \texttt{UpdateACK} it has received (with the correct ID, to avoid situation where a late ACK may
+affect a later update). Once it has received enough for a strict majority of the maximum amount of correct replicas in the system it
+broadcasts a \texttt{WRITEOK} message.
+
+Upon receiving a \texttt{WRITEOK} message, all replicas cancel the corresponding timeout, pop the current pending update from the queue and
+apply it. The specified value is written at the specified index of the local \texttt{locations} array and the combination of update,
+epoch number and sequence number is added to the \texttt{history} stack for future potential recoveries.
+
 \subsubsection{Election protocol}
 Upon receiving an \texttt{ElectionStarted} message, a replica removes the current coordinator from its active list. As outlined in the system design, only the replica with the smallest index is authorized to immediately initiate the actual election process. The remaining replicas defer their action by a timeout calculated dynamically as:
 \begin{equation}
@@ -42,7 +70,15 @@ If a expected \texttt{ACK} does not arrive within the timeout, the replica ident
     \item If the failure occurs in the second phase, it means the crashed replica had already registered its values. To prevent an entire restart of the election cycle, the replica removes the entries associated with the crashed node from the payload and forwards the modified message to the subsequent node.
 \end{itemize}
 
-Upon receiving the final \texttt{Synchronization} message, the replicas revert to \texttt{Normal Mode}. They increment the epoch, reset the local sequence number, apply the personalized updates received, and flush the queue of pending updates to satisfy the transactional consistency guarantees of the system. Normal heartbeat monitoring is then resumed.
+% Upon receiving the final \texttt{Synchronization} message, the replicas revert to \texttt{Normal Mode}. They increment the epoch, reset the local sequence number, apply the personalized updates received, and flush the queue of pending updates to satisfy the transactional consistency guarantees of the system. Normal heartbeat monitoring is then resumed.
+Upon receiving the final \texttt{Synchronization} message, the replicas apply the personalized updates received.
+
+To avoid a situation where an update is acknowledged by a quorum but is then lost before being confirmed by any replica, the replicas send
+a copy of their pending updates queue to the coordinator. The coordinator then creates a union of all the queues received and removes any update
+that has already been applied during the Synchronization. This final queue is sent to all replicas and the updates in it will be applied in
+the new epoch. Only then the replicas will revert back to \texttt{Normal Mode}, empty their pending queues and resume their operations like
+normal. This is safe because if an update was acknowledge by a quorum then at least one correct replica has it, either in its history or in
+its pending queue. 
 
 \subsubsection{Crash detection}
 When a crash command is received, its execution depends on the specified crash type. If the crash type is classified as \texttt{Now}, the replica terminates immediately. Otherwise, the crash is deferred, and its configuration parameters are stored within local variables.

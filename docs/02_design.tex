@@ -1,4 +1,10 @@
 \section{System Design}
+\subsection{Client}
+A \texttt{Client} is a simple entity used to interact with the system from the outside. They are able to send Read and Write request to
+a specific replica and receive a response containing the result of the operation. A \texttt{Client} keeps a timeout timer for every
+request issued and will ignore responses received after it ends. A \texttt{Client} does \textit{not} receive a response for the result of a
+correct write operation in the event that an election takes place or the contacted replica crashes while the request is being processed.
+
 \subsection{Replica}
 \subsubsection{Coordinator}
 To implement the coordinator logic within our distributed system, we integrated all coordinator functionalities directly into the \texttt{Replica} class using dedicated methods. Since a coordinator is inherently also a replica, this architectural choice allows any replica to react to specific messages and seamlessly transition into the coordinator role if it is the next node to be elected. 
@@ -9,6 +15,26 @@ Beyond heartbeats, the coordinator is responsible for critical synchronization d
     \item Sending \texttt{WriteOK} messages to the replicas upon reaching a consensus quorum.
     \item Broadcasting synchronization messages immediately after a successful election to align the state of the network.
 \end{itemize}
+
+\subsubsection{Update Protocol}
+To ensure updates are correctly replicated across the system we use a protocol that is similar to 2PC, but with some significant differences
+based on the assumptions we consider as true for this project.
+% In particular, knowing that we can count on a strict majority of replicas
+% always being correct and that nodes never recover from crashing were the two most impactful assumptions for our decisions.
+
+The protocol works as follows:
+\begin{enumerate}
+    \item A replica receives a write request from a client and forwards it to the coordinator (this is true even if the coordinator itself
+        is the one receiving the request). A timeout is set, waiting for the coordinator to send the update broadcast.
+    \item The coordinator broadcasts the update to all replicas, including itself.
+    \item Replicas receive the update and respond with an \texttt{UpdateACK} to the coordinator. A timeout is set, waiting for the
+        \texttt{WRITEOK} message.
+    \item The coordinator counts the ACKs until it has received enough to reach the quorum. It then broadcasts the \texttt{WRITEOK} message.
+    \item Replicas receive the \texttt{WRITEOK} message and apply the update
+\end{enumerate}
+If at any point a timeout expires before the corresponding message is received then the replica holding said timeout will consider the
+coordinator as crashed and will begin the election protocol. The election protocol details how they system recovers from partial updates.
+
 \subsubsection{Election protocol}
 The election protocol is triggered whenever a replica receives a \texttt{CoordinatorCrashed} message. Upon reception, the replica removes the failed leader from its list of available nodes and broadcasts an \texttt{ElectionStarted} message to initiate the protocol among the remaining peers. To prevent redundant or overlapping election cycles, any replica that receives this message sets an internal flag to true, thereby ignoring subsequent \texttt{ElectionStarted} signals. Replicas then remove the current coordinator from their active set and dynamically shift their operational state from \texttt{Normal Mode} to \texttt{Election Mode}. 
 We decoupled these two operational behaviors to handle concurrent user requests safely during an election phase. Consequently, any write request received while the system is in \texttt{Election Mode} is buffered locally and its forwarding is deferred until the new coordinator has been successfully established.
