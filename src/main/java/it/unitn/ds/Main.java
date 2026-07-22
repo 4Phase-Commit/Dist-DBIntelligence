@@ -10,6 +10,7 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.Props;
 import it.unitn.ds.AbstractReplica.InitSystem;
+import it.unitn.ds.cases.ClientRequestToCrashedReplica;
 import it.unitn.ds.cases.CoordinatorCrashAfterSomeWriteOk;
 import it.unitn.ds.cases.CoordinatorCrashAfterWriteReq;
 import it.unitn.ds.cases.CoordinatorCrashBeforeWOK;
@@ -30,6 +31,9 @@ public class Main {
         // CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
         // correctRW.run();
 
+        ClientRequestToCrashedReplica reqToCrashedReplica = new ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);
+        reqToCrashedReplica.run();
+
         // TODO: work in progress
         // CoordinatorCrashBeforeWOK coordinatorCrashBeforeWOK = new
         // CoordinatorCrashBeforeWOK("CoordinatorCrashBeforeWOK",
@@ -37,9 +41,9 @@ public class Main {
         // coordinatorCrashBeforeWOK.run();
 
         // A coordinator crashes after some (but not all) WRITEOK messages
-        // TODO: Investigate why the Replica_3 detects a non existent coordinator crash
-        CoordinatorCrashAfterSomeWriteOk execCase = new CoordinatorCrashAfterSomeWriteOk("SomeWOK", 4, 0);
-        execCase.run();
+        // CoordinatorCrashAfterSomeWriteOk execCase = new
+        // CoordinatorCrashAfterSomeWriteOk("SomeWOK", 4, 0);
+        // execCase.run();
 
         // CoordinatorCrashAfterWriteReq execCase = new
         // CoordinatorCrashAfterWriteReq("AfterReq", 4, 0);

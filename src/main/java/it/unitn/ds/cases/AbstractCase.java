@@ -8,6 +8,7 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.AbstractReplica.InitSystem;
+import it.unitn.ds.Client;
 import it.unitn.ds.Replica;
 
 /**
@@ -41,6 +42,33 @@ public class AbstractCase {
         for (Map.Entry<Integer, ActorRef> entry : replicas.entrySet()) {
             entry.getValue().tell(initMsg, ActorRef.noSender());
         }
+    }
+
+    public void SendRead(int delayMillis, ActorRef clientRef, int destinationId, int index) {
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofMillis(delayMillis),
+                clientRef,
+                new Client.SendReadMessage(replicas.get(destinationId), index),
+                system.dispatcher(),
+                ActorRef.noSender());
+    }
+
+    public void SendWrite(int delayMillis, ActorRef clientRef, int destinationId, int index, int value) {
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofMillis(delayMillis),
+                clientRef,
+                new Client.SendWriteMessage(replicas.get(destinationId), index, value),
+                system.dispatcher(),
+                ActorRef.noSender());
+    }
+
+    public void SendCrash(int delayMillis, ActorRef destination, AbstractReplica.Crash.Type type, int n_messages) {
+        system.scheduler().scheduleOnce(
+                java.time.Duration.ofMillis(delayMillis),
+                destination,
+                new AbstractReplica.Crash(type, n_messages),
+                system.dispatcher(),
+                ActorRef.noSender());
     }
 
     public void run() {
