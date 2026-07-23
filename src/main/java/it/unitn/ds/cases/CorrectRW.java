@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import akka.actor.ActorRef;
 import it.unitn.ds.Client;
+import it.unitn.ds.Client.SendWriteMessage;
 
 /**
  * Case in which a client performs a bunch of reads and writes
@@ -30,75 +31,22 @@ public class CorrectRW extends AbstractCase {
                         Optional.of(replicas.get(1))),
                 "client1");
 
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(0),
-                client,
-                new Client.SendReadMessage(replicas.get(1), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendRead(0, client, 1, 1);
+        SendWrite(1000, client, 1, 1, 10);
+        SendWrite(1000, client, 1, 1, 11);
+        SendWrite(1000, client, 1, 1, 12);
 
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 10),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendWrite(2000, client, 2, 1, 20);
 
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 11),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendWrite(2000, client, 1, 1, 20);
 
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 12),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendWrite(3000, client, 3, 1, 30);
 
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(2), 1, 20),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 30),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(3), 1, 40),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(4),
-                client,
-                new Client.SendReadMessage(replicas.get(0), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(5),
-                client,
-                new Client.SendReadMessage(replicas.get(1), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(6),
-                client,
-                new Client.SendReadMessage(replicas.get(2), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendRead(4000, client, 0, 1);
+        SendRead(4000, client, 0, 1);
+        SendRead(4000, client, 0, 1);
+        SendRead(4000, client, 1, 1);
+        SendRead(4000, client, 2, 1);
 
         try {
             System.out.println(">>> Press ENTER to continue");

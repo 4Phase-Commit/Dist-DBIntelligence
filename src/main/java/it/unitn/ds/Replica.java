@@ -671,7 +671,6 @@ public class Replica extends AbstractReplica {
         for (AppliedUpdate u : synchronization.updates) {
             history.push(u);
             locations[u.update.request.index] = u.update.request.value;
-            callbackOnUpdateApplied(u.update.request.index, u.update.request.value);
         }
 
         // Immutability is handled by the message class
@@ -725,7 +724,6 @@ public class Replica extends AbstractReplica {
                 AppliedUpdate a = new AppliedUpdate(u, epoch, updateSEQN++);
                 history.add(a);
                 locations[a.update.request.index] = a.update.request.value;
-                callbackOnUpdateApplied(a.update.request.index, a.update.request.value);
             }
 
             // End of protocol
@@ -761,7 +759,6 @@ public class Replica extends AbstractReplica {
             AppliedUpdate a = new AppliedUpdate(u, epoch, updateSEQN++);
             history.add(a);
             locations[a.update.request.index] = a.update.request.value;
-            callbackOnUpdateApplied(a.update.request.index, a.update.request.value);
         }
 
         // Switch back to normal context

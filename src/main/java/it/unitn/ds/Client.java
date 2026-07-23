@@ -12,17 +12,8 @@ import java.util.Optional;
 import java.util.Queue;
 
 public class Client extends AbstractClient {
-
-    private long nextTimeoutId = 0;
-
-    private record TimeoutEnvelope(long id, Object timeout) {
-    }
-
-    // The queue stores IDs for requests under the assumption that they
-    // will be processed in the same orders they are sent. IDs are used
-    // to find a specific timeout to remove if it expires.
-    private final Queue<Long> timeoutQueue = new ArrayDeque<>();
-    private final Map<Long, Cancellable> pendingTimeouts = new HashMap<>();
+    private Map<ReadTimeout, Queue<Cancellable>> readTimeouts = new HashMap<>();
+    private Map<WriteTimeout, Queue<Cancellable>> writeTimeouts = new HashMap<>();
 
     Client(long readTimeoutDelay, long writeTimeoutDelay, Optional<ActorRef> defaultTargetReplica,
             Optional<ActorRef> listener) {
@@ -42,7 +33,7 @@ public class Client extends AbstractClient {
     }
 
     // =================================================================================
-    // Messages for controllin the client
+    // Messages for controlling the client
     // =================================================================================
     public static class SendReadMessage {
         public final ActorRef replica;
@@ -72,8 +63,6 @@ public class Client extends AbstractClient {
 
     @Override
     public void sendRead(ActorRef replica, int index) {
-        // TODO: verify whether or not this also needs to use the emulated network delay
-        // from the AbstractReplica class
         setTimeout(
                 new AbstractClient.ReadTimeout(getSelf(), replica, index),
                 getReadTimeoutDelay());
@@ -89,8 +78,6 @@ public class Client extends AbstractClient {
 
     @Override
     public void sendWrite(ActorRef replica, int index, int value) {
-        // TODO: verify whether or not this also needs to use the emulated network delay
-        // from the AbstractReplica class
         setTimeout(
                 new AbstractClient.WriteTimeout(getSelf(), replica, index, value),
                 getWriteTimeoutDelay());
@@ -105,20 +92,61 @@ public class Client extends AbstractClient {
                 replica.path().name()));
     }
 
-    private long setTimeout(Object timeoutMessage, long delay) {
-        long timeoutId = nextTimeoutId++;
-
+    private void setTimeout(Object timeoutMessage, long delay) {
         Cancellable timeout = getContext().system().scheduler().scheduleOnce(
                 Duration.ofSeconds(delay),
                 getSelf(),
-                new TimeoutEnvelope(timeoutId, timeoutMessage),
+                timeoutMessage,
                 getContext().system().dispatcher(),
                 getSelf());
 
-        timeoutQueue.add(timeoutId);
-        pendingTimeouts.put(timeoutId, timeout);
+        if (timeoutMessage instanceof ReadTimeout) {
+            ReadTimeout rTimeout = (ReadTimeout) timeoutMessage;
+            readTimeouts
+                    .computeIfAbsent(rTimeout, k -> new ArrayDeque<>())
+                    .add(timeout);
+        } else if (timeoutMessage instanceof WriteTimeout) {
+            WriteTimeout wTimeout = (WriteTimeout) timeoutMessage;
+            writeTimeouts
+                    .computeIfAbsent(wTimeout, k -> new ArrayDeque<>())
+                    .add(timeout);
+        } else {
+            throw new IllegalArgumentException("Unknown timeout type: " + timeout.getClass());
+        }
+    }
 
-        return timeoutId;
+    private void cancelTimeout(ReadTimeout timeout) {
+        // Logger.debug("Read Timeout Queue: " +
+        // readTimeouts.values().stream().mapToInt(Queue::size).sum());
+        Queue<Cancellable> queue = readTimeouts.get(timeout);
+
+        if (queue != null) {
+            Cancellable c = queue.poll();
+            if (c != null) {
+                c.cancel();
+            }
+
+            if (queue.isEmpty()) {
+                readTimeouts.remove(timeout);
+            }
+        }
+    }
+
+    private void cancelTimeout(WriteTimeout timeout) {
+        // Logger.debug("Write Timeout Queue: " +
+        // writeTimeouts.values().stream().mapToInt(Queue::size).sum());
+        Queue<Cancellable> queue = writeTimeouts.get(timeout);
+
+        if (queue != null) {
+            Cancellable c = queue.poll();
+            if (c != null) {
+                c.cancel();
+            }
+
+            if (queue.isEmpty()) {
+                writeTimeouts.remove(timeout);
+            }
+        }
     }
 
     // =================================================================================
@@ -132,7 +160,8 @@ public class Client extends AbstractClient {
                 .match(SendWriteMessage.class, this::handleSendWriteCommand)
                 .match(ReadResult.class, this::handleReadResult)
                 .match(WriteResult.class, this::handleWriteResult)
-                .match(TimeoutEnvelope.class, this::handleTimeout)
+                .match(ReadTimeout.class, this::handleTimeout)
+                .match(WriteTimeout.class, this::handleTimeout)
                 .build();
     }
 
@@ -157,15 +186,8 @@ public class Client extends AbstractClient {
 
     public void handleReadResult(ReadResult result) {
         // Cancel scheduled timeout
-        Long timeoutId = timeoutQueue.poll();
-
-        if (timeoutId != null) {
-            Cancellable timeout = pendingTimeouts.remove(timeoutId);
-
-            if (timeout != null) {
-                timeout.cancel();
-            }
-        }
+        ReadTimeout timeout = new ReadTimeout(getSelf(), getSender(), result.index);
+        cancelTimeout(timeout);
 
         // Duplicate log with the callback
         // Logger.log(String.format(
@@ -181,15 +203,8 @@ public class Client extends AbstractClient {
 
     public void handleWriteResult(WriteResult result) {
         // Cancel scheduled timeout
-        Long timeoutId = timeoutQueue.poll();
-
-        if (timeoutId != null) {
-            Cancellable timeout = pendingTimeouts.remove(timeoutId);
-
-            if (timeout != null) {
-                timeout.cancel();
-            }
-        }
+        WriteTimeout timeout = new WriteTimeout(getSelf(), getSender(), result.index, result.value);
+        cancelTimeout(timeout);
 
         // Duplicate log with the callback
         // Logger.log(String.format(
@@ -203,30 +218,28 @@ public class Client extends AbstractClient {
         callbackOnWriteResult(result);
     }
 
-    public void handleTimeout(TimeoutEnvelope envelope) {
-        long id = envelope.id();
+    public void handleTimeout(Object timeout) {
+        if (timeout instanceof ReadTimeout) {
+            ReadTimeout rTimeout = (ReadTimeout) timeout;
+            cancelTimeout(rTimeout);
 
-        // It is assumed that there is no need to cancel
-        // if the timeout expires because of scheduleOnce
-        pendingTimeouts.remove(id);
-        timeoutQueue.remove(id);
-
-        Object timeoutMessage = envelope.timeout();
-
-        if (timeoutMessage instanceof AbstractClient.ReadTimeout timeout) {
             Logger.log(String.format(
                     "[Client %s] TIMEOUT READ request to %s (%d)",
                     clientName(),
-                    timeout.replica.path().name(),
-                    timeout.index));
+                    rTimeout.replica.path().name(),
+                    rTimeout.index));
 
-        } else if (timeoutMessage instanceof AbstractClient.WriteTimeout timeout) {
+        } else if (timeout instanceof WriteTimeout) {
+            WriteTimeout wTimeout = (WriteTimeout) timeout;
+            cancelTimeout(wTimeout);
+
             Logger.log(String.format(
                     "[Client %s] TIMEOUT WRITE request to %s (%d, %d)",
                     clientName(),
-                    timeout.replica.path().name(),
-                    timeout.index,
-                    timeout.value));
+                    wTimeout.replica.path().name(),
+                    wTimeout.index,
+                    wTimeout.value));
+
         } else {
             Logger.log(String.format(
                     "[Client %s] Received an invalid timeout message",
