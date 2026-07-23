@@ -17,9 +17,9 @@ public class Replica extends AbstractReplica {
     private static final int HEARTBEAT_TIMEOUT_MS = 1100;
     private static final int ELECTIONACK_TIMEOUT_MS = 3000;
     public static final int ELECTION_TIMEOUT_MULTIPLIER = 100;
+    public static final int SYNCHRONIZAZION_TIMEOUT = 2000;
     public static final int REQUEST_FORWARD_TIMEOUT = 2000;
     public static final int WRITEOK_TIMEOUT = 2000;
-    public static final int SYNCHRONIZAZION_TIMEOUT = 2000;
 
     private boolean amICoordinator;
     private int currentCoordinator;
@@ -142,9 +142,11 @@ public class Replica extends AbstractReplica {
 
         debug("am i the coordinator ?" + amICoordinator);
 
-        if (!amICoordinator)
-            return;
-        beginHeartBeat();
+        if (!amICoordinator) {
+            listenForHeartBeat();
+        } else {
+            beginHeartBeat();
+        }
 
     }
 
@@ -657,9 +659,10 @@ public class Replica extends AbstractReplica {
         sendElection(crashedReplica, newUpdates, electionACKTimeout.currentElection.id);
     }
 
-    // TODO: add seqno to 0
     private void onSynchronization(Synchronization synchronization) {
         debug(synchronization.newCoordinator + " is the new leader");
+
+        callbackOnCoordinatorElected(synchronization.newCoordinator);
 
         CancelTimeout(electionTimeout); // delete sync timeout
         epoch++;
@@ -806,9 +809,9 @@ public class Replica extends AbstractReplica {
                 updateSEQN = 0;
                 sendSyncUpdates(election);
                 replicas.keySet().retainAll(election.updates.keySet()); // update the replica set
+                callbackOnCoordinatorElected(id); // the coordinator is now myself
             } else { // am not the leader to pass to the next one
                 debug("Cannot be coordinator but " + newCoordinator + " should be");
-                // TODO: add CoordinatorElected
                 sendElection(id, election.updates, election.id);
                 electionTimeout = getContext().system().scheduler().scheduleOnce( // synchronizaion message timeout
                         Duration.create((long) SYNCHRONIZAZION_TIMEOUT * (indexOfReplica(id) + 1),
@@ -836,6 +839,7 @@ public class Replica extends AbstractReplica {
         debug("from " + electionStarted.replicaId + " the election is started");
         isElectionFirstPhase = true;
         replicas.remove(currentCoordinator); // remove current coordinator
+        callbackOnElectionStarted(currentCoordinator);
 
         int lowestKey = replicas.firstKey();
         if (lowestKey != id) {
@@ -870,6 +874,7 @@ public class Replica extends AbstractReplica {
 
     // TODO: if electionstarted return;
     private void OnCrashedCoordinator(CoordinatorCrashed coordinatorCrashed) {
+//        if (isElectionFirstPhase) return;
         CancelTimeout(heartbeatExpireTimer);
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);

@@ -7,14 +7,11 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import akka.actor.ActorRef;
+
 import akka.actor.ActorSystem;
 import akka.actor.Props;
 import it.unitn.ds.AbstractReplica.InitSystem;
-import it.unitn.ds.cases.ClientRequestToCrashedReplica;
-import it.unitn.ds.cases.CoordinatorCrashAfterSomeWriteOk;
-import it.unitn.ds.cases.CoordinatorCrashAfterWriteReq;
-import it.unitn.ds.cases.CoordinatorCrashBeforeWOK;
-import it.unitn.ds.cases.CorrectRW;
+import it.unitn.ds.cases.*;
 import scala.concurrent.duration.Duration;
 
 public class Main {
@@ -27,12 +24,15 @@ public class Main {
         Logger.setDestinationStdout();
         Logger.setDebugEnabled(true);
 
+        CoordinatorCasualCrash coordinatorCasualCrash = new CoordinatorCasualCrash("SimpleCoordinatorCrash",5,0);
+        coordinatorCasualCrash.run();
+
         // Testing a client execution and r/w logic for replicas
         // CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
         // correctRW.run();
 
-        ClientRequestToCrashedReplica reqToCrashedReplica = new ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);
-        reqToCrashedReplica.run();
+//        ClientRequestToCrashedReplica reqToCrashedReplica = new ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);
+//        reqToCrashedReplica.run();
 
         // TODO: work in progress
         // CoordinatorCrashBeforeWOK coordinatorCrashBeforeWOK = new
