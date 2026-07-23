@@ -6,6 +6,7 @@ import java.util.Map;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
+import it.unitn.ds.AbstractClient;
 import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.AbstractReplica.InitSystem;
 import it.unitn.ds.Client;
@@ -48,7 +49,7 @@ public class AbstractCase {
         system.scheduler().scheduleOnce(
                 java.time.Duration.ofMillis(delayMillis),
                 clientRef,
-                new Client.SendReadMessage(replicas.get(destinationId), index),
+                new AbstractClient.ReadRequest(index, replicas.get(destinationId)),
                 system.dispatcher(),
                 ActorRef.noSender());
     }
@@ -57,7 +58,7 @@ public class AbstractCase {
         system.scheduler().scheduleOnce(
                 java.time.Duration.ofMillis(delayMillis),
                 clientRef,
-                new Client.SendWriteMessage(replicas.get(destinationId), index, value),
+                new AbstractClient.WriteRequest(index, value, replicas.get(destinationId)),
                 system.dispatcher(),
                 ActorRef.noSender());
     }

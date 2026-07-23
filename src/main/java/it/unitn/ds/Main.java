@@ -31,8 +31,12 @@ public class Main {
         // CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
         // correctRW.run();
 
-//        ClientRequestToCrashedReplica reqToCrashedReplica = new ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);
-//        reqToCrashedReplica.run();
+//        TempTests tempTests = new TempTests("tempTests", 7, 0);
+        tempTests.run();
+
+        // ClientRequestToCrashedReplica reqToCrashedReplica = new
+        // ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);
+//        // reqToCrashedReplica.run();
 
         // TODO: work in progress
         // CoordinatorCrashBeforeWOK coordinatorCrashBeforeWOK = new

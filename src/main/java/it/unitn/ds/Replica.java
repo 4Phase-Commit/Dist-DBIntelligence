@@ -29,6 +29,7 @@ public class Replica extends AbstractReplica {
     private int updateSEQN;
     private boolean hasCrashed;
 
+    private boolean acceptingUpdateAcks = false;
     private int updateACKCount;
     private int nextUpdateId;
     private int currentUpdateId;
@@ -448,23 +449,22 @@ public class Replica extends AbstractReplica {
                 updateACK.id,
                 getSender().path().name()));
 
-        if (currentUpdateId != updateACK.id) {
+        if (currentUpdateId != updateACK.id || !acceptingUpdateAcks) {
+            debug("Dropping ACK for update " + updateACK.id + " from " + getSender().path().name());
             return;
         }
 
         updateACKCount++;
 
         if (updateACKCount >= (replicas.size() / 2) + 1) {
-            Logger.log(String.format(
-                    "[Replica %d] Write quorum reached, broadcasting WRITEOK",
-                    this.id,
-                    getSender().path().name()));
+            log("Write quorum reached: " + ((replicas.size() / 2) + 1) + ", broadcasting WRITEOK");
 
             broadcast(new WriteOK(), true);
             updateACKCount = 0;
 
             if (coordinatorUpdateQueue.isEmpty()) {
                 coordinatorBusy = false;
+                acceptingUpdateAcks = false;
             } else {
                 Update update = coordinatorUpdateQueue.poll();
                 currentUpdateId = update.id;
@@ -606,6 +606,7 @@ public class Replica extends AbstractReplica {
         } else {
             coordinatorBusy = true;
             currentUpdateId = update.id;
+            acceptingUpdateAcks = true;
             broadcast(update, true);
         }
     }
@@ -674,6 +675,7 @@ public class Replica extends AbstractReplica {
         for (AppliedUpdate u : synchronization.updates) {
             history.push(u);
             locations[u.update.request.index] = u.update.request.value;
+            callbackOnUpdateApplied(u.update.request.index, u.update.request.value);
         }
 
         // Immutability is handled by the message class
@@ -727,6 +729,7 @@ public class Replica extends AbstractReplica {
                 AppliedUpdate a = new AppliedUpdate(u, epoch, updateSEQN++);
                 history.add(a);
                 locations[a.update.request.index] = a.update.request.value;
+                callbackOnUpdateApplied(a.update.request.index, a.update.request.value);
             }
 
             // End of protocol
@@ -762,6 +765,7 @@ public class Replica extends AbstractReplica {
             AppliedUpdate a = new AppliedUpdate(u, epoch, updateSEQN++);
             history.add(a);
             locations[a.update.request.index] = a.update.request.value;
+            callbackOnUpdateApplied(a.update.request.index, a.update.request.value);
         }
 
         // Switch back to normal context

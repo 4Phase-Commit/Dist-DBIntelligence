@@ -33,31 +33,6 @@ public class Client extends AbstractClient {
     }
 
     // =================================================================================
-    // Messages for controlling the client
-    // =================================================================================
-    public static class SendReadMessage {
-        public final ActorRef replica;
-        public final int key;
-
-        public SendReadMessage(ActorRef replica, int key) {
-            this.replica = replica;
-            this.key = key;
-        }
-    }
-
-    public static class SendWriteMessage {
-        public final ActorRef replica;
-        public final int key;
-        public final int value;
-
-        public SendWriteMessage(ActorRef replica, int key, int value) {
-            this.replica = replica;
-            this.key = key;
-            this.value = value;
-        }
-    }
-
-    // =================================================================================
     // Message Sending
     // =================================================================================
 
@@ -94,7 +69,7 @@ public class Client extends AbstractClient {
 
     private void setTimeout(Object timeoutMessage, long delay) {
         Cancellable timeout = getContext().system().scheduler().scheduleOnce(
-                Duration.ofSeconds(delay),
+                Duration.ofMillis(delay),
                 getSelf(),
                 timeoutMessage,
                 getContext().system().dispatcher(),
@@ -156,8 +131,8 @@ public class Client extends AbstractClient {
     @Override
     public final Receive createReceive() {
         return createBaseReceiveBuilder()
-                .match(SendReadMessage.class, this::handleSendReadCommand)
-                .match(SendWriteMessage.class, this::handleSendWriteCommand)
+                .match(ReadRequest.class, this::handleReadRequest)
+                .match(WriteRequest.class, this::handleWriteRequest)
                 .match(ReadResult.class, this::handleReadResult)
                 .match(WriteResult.class, this::handleWriteResult)
                 .match(ReadTimeout.class, this::handleTimeout)
@@ -165,39 +140,29 @@ public class Client extends AbstractClient {
                 .build();
     }
 
-    public void handleSendReadCommand(SendReadMessage msg) {
+    public void handleReadRequest(ReadRequest msg) {
         Logger.log(String.format(
                 "[Client %s] Received READ command message for index (%d)",
                 clientName(),
-                msg.key));
+                msg.index));
 
-        sendRead(msg.replica, msg.key);
+        sendRead(msg.replica, msg.index);
     }
 
-    public void handleSendWriteCommand(SendWriteMessage msg) {
+    public void handleWriteRequest(WriteRequest msg) {
         Logger.log(String.format(
                 "[Client %s] Received WRITE command message for (%d, %d)",
                 clientName(),
-                msg.key,
+                msg.index,
                 msg.value));
 
-        sendWrite(msg.replica, msg.key, msg.value);
+        sendWrite(msg.replica, msg.index, msg.value);
     }
 
     public void handleReadResult(ReadResult result) {
         // Cancel scheduled timeout
         ReadTimeout timeout = new ReadTimeout(getSelf(), getSender(), result.index);
         cancelTimeout(timeout);
-
-        // Duplicate log with the callback
-        // Logger.log(String.format(
-        // "[Client %s] READ complete (%s, %d, %s) from %s",
-        // clientName(),
-        // result.success,
-        // result.index,
-        // result.value,
-        // result.fromReplica));
-
         callbackOnReadResult(result);
     }
 
@@ -205,16 +170,6 @@ public class Client extends AbstractClient {
         // Cancel scheduled timeout
         WriteTimeout timeout = new WriteTimeout(getSelf(), getSender(), result.index, result.value);
         cancelTimeout(timeout);
-
-        // Duplicate log with the callback
-        // Logger.log(String.format(
-        // "[Client %s] WRITE complete (%s, %d, %s) from %s",
-        // clientName(),
-        // result.success,
-        // result.index,
-        // result.value,
-        // result.fromReplica));
-
         callbackOnWriteResult(result);
     }
 
@@ -222,23 +177,12 @@ public class Client extends AbstractClient {
         if (timeout instanceof ReadTimeout) {
             ReadTimeout rTimeout = (ReadTimeout) timeout;
             cancelTimeout(rTimeout);
-
-            Logger.log(String.format(
-                    "[Client %s] TIMEOUT READ request to %s (%d)",
-                    clientName(),
-                    rTimeout.replica.path().name(),
-                    rTimeout.index));
+            callbackOnReadTimeout(rTimeout);
 
         } else if (timeout instanceof WriteTimeout) {
             WriteTimeout wTimeout = (WriteTimeout) timeout;
             cancelTimeout(wTimeout);
-
-            Logger.log(String.format(
-                    "[Client %s] TIMEOUT WRITE request to %s (%d, %d)",
-                    clientName(),
-                    wTimeout.replica.path().name(),
-                    wTimeout.index,
-                    wTimeout.value));
+            callbackOnWriteTimeout(wTimeout);
 
         } else {
             Logger.log(String.format(
