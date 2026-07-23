@@ -94,7 +94,7 @@ public class Client extends AbstractClient {
 
     private void setTimeout(Object timeoutMessage, long delay) {
         Cancellable timeout = getContext().system().scheduler().scheduleOnce(
-                Duration.ofSeconds(delay),
+                Duration.ofMillis(delay),
                 getSelf(),
                 timeoutMessage,
                 getContext().system().dispatcher(),
@@ -222,6 +222,7 @@ public class Client extends AbstractClient {
         if (timeout instanceof ReadTimeout) {
             ReadTimeout rTimeout = (ReadTimeout) timeout;
             cancelTimeout(rTimeout);
+            callbackOnReadTimeout(rTimeout);
 
             Logger.log(String.format(
                     "[Client %s] TIMEOUT READ request to %s (%d)",
@@ -232,6 +233,7 @@ public class Client extends AbstractClient {
         } else if (timeout instanceof WriteTimeout) {
             WriteTimeout wTimeout = (WriteTimeout) timeout;
             cancelTimeout(wTimeout);
+            callbackOnWriteTimeout(wTimeout);
 
             Logger.log(String.format(
                     "[Client %s] TIMEOUT WRITE request to %s (%d, %d)",
