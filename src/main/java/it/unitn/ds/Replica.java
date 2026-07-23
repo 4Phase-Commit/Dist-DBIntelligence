@@ -657,7 +657,7 @@ public class Replica extends AbstractReplica {
         sendElection(crashedReplica, newUpdates, electionACKTimeout.currentElection.id);
     }
 
-    // add seqno to 0
+    // TODO: add seqno to 0
     private void onSynchronization(Synchronization synchronization) {
         debug(synchronization.newCoordinator + " is the new leader");
 
@@ -811,6 +811,7 @@ public class Replica extends AbstractReplica {
                 replicas.keySet().retainAll(election.updates.keySet()); // update the replica set
             } else { // am not the leader to pass to the next one
                 debug("Cannot be coordinator but " + newCoordinator + " should be");
+                // TODO: add CoordinatorElected
                 sendElection(id, election.updates, election.id);
                 electionTimeout = getContext().system().scheduler().scheduleOnce( // synchronizaion message timeout
                         Duration.create((long) SYNCHRONIZAZION_TIMEOUT * (indexOfReplica(id) + 1),
@@ -870,7 +871,7 @@ public class Replica extends AbstractReplica {
         // getSelf()));
     }
 
-    // if electionstarted return;
+    // TODO: if electionstarted return;
     private void OnCrashedCoordinator(CoordinatorCrashed coordinatorCrashed) {
         CancelTimeout(heartbeatExpireTimer);
         CancelTimeout(fowardTimeouts);
