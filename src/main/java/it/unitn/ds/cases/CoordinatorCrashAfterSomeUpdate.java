@@ -6,6 +6,7 @@ import java.util.Optional;
 import akka.actor.ActorRef;
 import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.Client;
+import it.unitn.ds.AbstractReplica.Crash.Type;
 
 /**
  * Case in which the coordinator crashes after issuing an UPDATE
@@ -36,8 +37,8 @@ class CoordinatorCrashAfterSomeUpdate extends AbstractCase {
         // TODO: fix the crash scheduling once they are changed
         ActorRef client = system.actorOf(
                 Client.props(
-                        1,
-                        2,
+                        1000,
+                        2000,
                         Optional.of(replicas.get(1))),
                 "client1");
 
@@ -45,52 +46,16 @@ class CoordinatorCrashAfterSomeUpdate extends AbstractCase {
         // Presumably the highest id will win in absence of newer writes
         ActorRef secondCoordinator = this.replicas.get(this.replicas.size() - 1);
 
-        // Crash messages
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(0),
-                startingCoordinator,
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Update, this.N_REPLICAS / 2 + 1), // quorum
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendCrash(0, startingCoordinator, Type.Update, N_REPLICAS / 2 + 1);
+        // TODO: consider the update recovery from the previous operation in the crash
+        // conditions
+        SendCrash(0, secondCoordinator, Type.Update, (N_REPLICAS - 1) / 2);
 
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(0),
-                secondCoordinator,
-                // TODO: consider the update recovery from the previous operation in the crash
-                // conditions
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Update, (this.N_REPLICAS - 1) / 2), // no quorum
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendWrite(1000, client, 1, 1, 100);
+        SendRead(2000, client, 1, 1);
 
-        // First write
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 100),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(2),
-                client,
-                new Client.SendReadMessage(replicas.get(1), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        // Second write
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(4),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 200),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(5),
-                client,
-                new Client.SendReadMessage(replicas.get(1), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendWrite(4000, client, 1, 1, 200);
+        SendRead(5000, client, 1, 1);
 
         try {
             System.out.println(">>> Press ENTER to continue");

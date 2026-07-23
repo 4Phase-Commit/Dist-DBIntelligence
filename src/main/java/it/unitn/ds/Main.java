@@ -15,6 +15,7 @@ import it.unitn.ds.cases.CoordinatorCrashAfterSomeWriteOk;
 import it.unitn.ds.cases.CoordinatorCrashAfterWriteReq;
 import it.unitn.ds.cases.CoordinatorCrashBeforeWOK;
 import it.unitn.ds.cases.CorrectRW;
+import it.unitn.ds.cases.TempTests;
 import scala.concurrent.duration.Duration;
 
 public class Main {
@@ -31,8 +32,12 @@ public class Main {
         // CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
         // correctRW.run();
 
-        ClientRequestToCrashedReplica reqToCrashedReplica = new ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);
-        reqToCrashedReplica.run();
+        TempTests tempTests = new TempTests("tempTests", 7, 0);
+        tempTests.run();
+
+        // ClientRequestToCrashedReplica reqToCrashedReplica = new
+        // ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);
+        // reqToCrashedReplica.run();
 
         // TODO: work in progress
         // CoordinatorCrashBeforeWOK coordinatorCrashBeforeWOK = new

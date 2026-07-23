@@ -5,7 +5,6 @@ import java.util.Optional;
 
 import akka.actor.ActorRef;
 import it.unitn.ds.Client;
-import it.unitn.ds.Client.SendWriteMessage;
 
 /**
  * Case in which a client performs a bunch of reads and writes
@@ -26,8 +25,8 @@ public class CorrectRW extends AbstractCase {
     public void run() {
         ActorRef client = system.actorOf(
                 Client.props(
-                        1,
-                        2,
+                        1000,
+                        2000,
                         Optional.of(replicas.get(1))),
                 "client1");
 

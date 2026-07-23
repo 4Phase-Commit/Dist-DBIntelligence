@@ -2,11 +2,13 @@
 package it.unitn.ds.cases;
 
 import java.io.IOException;
+import java.sql.ClientInfoStatus;
 import java.util.Optional;
 
 import akka.actor.ActorRef;
 import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.Client;
+import it.unitn.ds.AbstractReplica.Crash.Type;
 
 /**
  * Case in which the coordinator crashes after issuing some
@@ -31,58 +33,24 @@ public class CoordinatorCrashAfterSomeWriteOk extends AbstractCase {
         // TODO: fix once crash management is changed
         ActorRef client = system.actorOf(
                 Client.props(
-                        1,
-                        2,
+                        1000,
+                        2000,
                         Optional.of(replicas.get(1))),
                 "client1");
 
         ActorRef startingCoordinator = this.replicas.get(STARTING_COORDINATOR_ID);
 
-        // Send crash message
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(0),
-                startingCoordinator,
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.WriteOK, 3),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        // Send write
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 30),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendCrash(0, startingCoordinator, Type.WriteOK, 3);
+        SendWrite(1000, client, 1, 1, 30);
 
         // Reads to check that the update was propagated successfully
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(3),
-                client,
-                new Client.SendReadMessage(replicas.get(1), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(3),
-                client,
-                new Client.SendReadMessage(replicas.get(2), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(3),
-                client,
-                new Client.SendReadMessage(replicas.get(3), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendRead(3000, client, 1, 1);
+        SendRead(3000, client, 2, 1);
+        SendRead(3000, client, 3, 1);
 
         // New write to check if <e, i> were updated correctly
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(4),
-                client,
-                new Client.SendWriteMessage(replicas.get(3), 1, 40),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendWrite(4000, client, 3, 1, 40);
+
         try {
             System.out.println(">>> Press ENTER to continue");
             System.in.read();

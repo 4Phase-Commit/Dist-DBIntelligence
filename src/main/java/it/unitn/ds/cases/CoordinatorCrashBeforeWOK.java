@@ -6,6 +6,7 @@ import java.util.Optional;
 import akka.actor.ActorRef;
 import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.Client;
+import it.unitn.ds.AbstractReplica.Crash.Type;
 
 /**
  * Case in which a coordinator crashes during a write operation
@@ -32,40 +33,17 @@ public class CoordinatorCrashBeforeWOK extends AbstractCase {
     public void run() {
         ActorRef client = system.actorOf(
                 Client.props(
-                        1,
-                        2,
+                        1000,
+                        2000,
                         Optional.of(replicas.get(1))),
                 "client1");
 
         ActorRef startingCoordinator = this.replicas.get(STARTING_COORDINATOR_ID);
 
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(0),
-                startingCoordinator,
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Update, 3),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(0),
-                client,
-                new Client.SendReadMessage(replicas.get(1), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 30),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 40),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendCrash(0, startingCoordinator, Type.Update, 3);
+        SendRead(0, client, 1, 1);
+        SendWrite(1000, client, 1, 1, 30);
+        SendWrite(1000, client, 1, 1, 40);
 
         try {
             System.out.println(">>> Press ENTER to continue");

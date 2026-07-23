@@ -6,6 +6,7 @@ import java.util.Optional;
 import akka.actor.ActorRef;
 import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.Client;
+import it.unitn.ds.AbstractReplica.Crash.Type;
 
 // TODO: Do we want the replica to drop the update instead?
 /**
@@ -30,33 +31,16 @@ public class CoordinatorCrashAfterWriteReq extends AbstractCase {
     public void run() {
         ActorRef client = system.actorOf(
                 Client.props(
-                        1,
-                        2,
+                        1000,
+                        2000,
                         Optional.of(replicas.get(1))),
                 "client1");
 
         ActorRef startingCoordinator = this.replicas.get(STARTING_COORDINATOR_ID);
 
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(0),
-                client,
-                new Client.SendWriteMessage(replicas.get(1), 1, 100),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(0),
-                startingCoordinator,
-                new AbstractReplica.Crash(AbstractReplica.Crash.Type.Now, 0),
-                system.dispatcher(),
-                ActorRef.noSender());
-
-        system.scheduler().scheduleOnce(
-                java.time.Duration.ofSeconds(1),
-                client,
-                new Client.SendReadMessage(replicas.get(1), 1),
-                system.dispatcher(),
-                ActorRef.noSender());
+        SendWrite(0, client, 1, 1, 100);
+        SendCrash(0, startingCoordinator, Type.Now, 0);
+        SendRead(1000, client, 1, 1);
 
         try {
             System.out.println(">>> Press ENTER to continue");
