@@ -322,11 +322,9 @@ public abstract class AbstractReplica extends AbstractActor {
 
     // custom messages
     public static class HeartBeat implements Serializable {
-        public final int replicaId;
         public final int currentCoordinator;
 
-        public HeartBeat(int replicaId, int currentCoordinator) {
-            this.replicaId = replicaId;
+        public HeartBeat(int currentCoordinator) {
             this.currentCoordinator = currentCoordinator;
         }
 
@@ -334,42 +332,18 @@ public abstract class AbstractReplica extends AbstractActor {
         public boolean equals(Object obj) {
             if (obj instanceof HeartBeat) {
                 HeartBeat o = (HeartBeat) obj;
-                return o.replicaId == this.replicaId && o.currentCoordinator == this.currentCoordinator;
+                return o.currentCoordinator == this.currentCoordinator;
             }
             return false;
         }
 
         @Override
         public String toString() {
-            return "HeartBeat(ToReplica=" + replicaId + ", currentCordinator=" + currentCoordinator + ")";
+            return "HeartBeat(currentCordinator=" + currentCoordinator + ")";
         }
     }
 
     public static class SendHeartBeat implements Serializable {
-        public final ActorRef replica;
-        public final int replicaId;
-        public final int currentCoordinator;
-
-        public SendHeartBeat(int replicaId, ActorRef replica, int currentCoordinator) {
-            this.replicaId = replicaId;
-            this.replica = replica;
-            this.currentCoordinator = currentCoordinator;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (obj instanceof HeartBeat) {
-                SendHeartBeat o = (SendHeartBeat) obj;
-                return o.replica == this.replica && o.replicaId == this.replicaId
-                        && o.currentCoordinator == this.currentCoordinator;
-            }
-            return false;
-        }
-
-        @Override
-        public String toString() {
-            return "SendHeartBeat(ToReplica=" + replica + ", currentCordinator=" + currentCoordinator + ")";
-        }
     }
 
     public static class CoordinatorCrashed implements Serializable {

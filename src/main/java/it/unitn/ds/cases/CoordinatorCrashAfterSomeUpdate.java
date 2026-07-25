@@ -28,12 +28,12 @@ import it.unitn.ds.AbstractReplica.Crash.Type;
  * </p>
  */
 class CoordinatorCrashAfterSomeUpdate extends AbstractCase {
-    public CoordinatorCrashAfterSomeUpdate(String systemName, int numReplicas, int coordinatorId) {
-        super(systemName, numReplicas, coordinatorId);
+    public CoordinatorCrashAfterSomeUpdate( int numReplicas, int coordinatorId) {
+        super( numReplicas, coordinatorId);
     }
 
     @Override
-    public void run() {
+    protected void Execute() {
         // TODO: fix the crash scheduling once they are changed
         ActorRef client = system.actorOf(
                 Client.props(
@@ -56,13 +56,5 @@ class CoordinatorCrashAfterSomeUpdate extends AbstractCase {
 
         SendWrite(4000, client, 1, 1, 200);
         SendRead(5000, client, 1, 1);
-
-        try {
-            System.out.println(">>> Press ENTER to continue");
-            System.in.read();
-        } catch (IOException e) {
-        }
-
-        system.terminate();
     }
 }

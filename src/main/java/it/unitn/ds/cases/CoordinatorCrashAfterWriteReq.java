@@ -23,12 +23,12 @@ import it.unitn.ds.AbstractReplica.Crash.Type;
  * </p>
  */
 public class CoordinatorCrashAfterWriteReq extends AbstractCase {
-    public CoordinatorCrashAfterWriteReq(String systemName, int numReplicas, int coordinatorId) {
-        super(systemName, numReplicas, coordinatorId);
+    public CoordinatorCrashAfterWriteReq(int numReplicas, int coordinatorId) {
+        super(numReplicas, coordinatorId);
     }
 
     @Override
-    public void run() {
+    protected void Execute() {
         ActorRef client = system.actorOf(
                 Client.props(
                         1000,
@@ -41,13 +41,5 @@ public class CoordinatorCrashAfterWriteReq extends AbstractCase {
         SendWrite(0, client, 1, 1, 100);
         SendCrash(0, startingCoordinator, Type.Now, 0);
         SendRead(1000, client, 1, 1);
-
-        try {
-            System.out.println(">>> Press ENTER to continue");
-            System.in.read();
-        } catch (IOException e) {
-        }
-
-        system.terminate();
     }
 }

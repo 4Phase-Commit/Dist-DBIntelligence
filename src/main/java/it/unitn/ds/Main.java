@@ -23,7 +23,22 @@ public class Main {
 
         Logger.setDestinationStdout();
         Logger.setDebugEnabled(true);
+        // -------------------------------- COORDINATOR TESTS -------------------------------- //
 
+//        new ReplicaCrashDuringElection(5,0); // race condition if election timeout multiplier and sync timeout are low because i have a lot of replicas and if i dont remove the one crashed i waste time
+
+//        new ReplicaCrashBeforeFirstElection(5,1);
+
+//        new CoordinatorCasualCrash(5, 0);
+
+//        new CoordinatorCrashAfterElection(5,1);
+
+//        new CoordinatorCrashBeforeUpdate(5,1);
+
+
+
+
+        
         // CoordinatorCasualCrash coordinatorCasualCrash = new
         // CoordinatorCasualCrash("SimpleCoordinatorCrash",5,0);
         // coordinatorCasualCrash.run();
@@ -32,7 +47,7 @@ public class Main {
         // CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
         // correctRW.run();
 
-        TempTests tempTests = new TempTests("tempTests", 7, 0);
+        TempTests tempTests = new TempTests(7, 0);
         tempTests.run();
 
         // ClientRequestToCrashedReplica reqToCrashedReplica = new

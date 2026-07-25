@@ -25,12 +25,12 @@ import it.unitn.ds.AbstractReplica.Crash.Type;
  */
 public class CoordinatorCrashBeforeWOK extends AbstractCase {
 
-    public CoordinatorCrashBeforeWOK(String systemName, int numReplicas, int coordinatorId) {
-        super(systemName, numReplicas, coordinatorId);
+    public CoordinatorCrashBeforeWOK(int numReplicas, int coordinatorId) {
+        super(numReplicas, coordinatorId);
     }
 
     @Override
-    public void run() {
+    protected void Execute() {
         ActorRef client = system.actorOf(
                 Client.props(
                         1000,
@@ -44,13 +44,5 @@ public class CoordinatorCrashBeforeWOK extends AbstractCase {
         SendRead(0, client, 1, 1);
         SendWrite(1000, client, 1, 1, 30);
         SendWrite(1000, client, 1, 1, 40);
-
-        try {
-            System.out.println(">>> Press ENTER to continue");
-            System.in.read();
-        } catch (IOException e) {
-        }
-
-        system.terminate();
     }
 }

@@ -17,12 +17,12 @@ import it.unitn.ds.Client;
  * </p>
  */
 public class CorrectRW extends AbstractCase {
-    public CorrectRW(String systemName, int numReplicas, int coordinatorId) {
-        super(systemName, numReplicas, coordinatorId);
+    public CorrectRW(int numReplicas, int coordinatorId) {
+        super(numReplicas, coordinatorId);
     }
 
     @Override
-    public void run() {
+    protected void Execute() {
         ActorRef client = system.actorOf(
                 Client.props(
                         1000,
@@ -46,13 +46,5 @@ public class CorrectRW extends AbstractCase {
         SendRead(4000, client, 0, 1);
         SendRead(4000, client, 1, 1);
         SendRead(4000, client, 2, 1);
-
-        try {
-            System.out.println(">>> Press ENTER to continue");
-            System.in.read();
-        } catch (IOException e) {
-        }
-
-        system.terminate();
     }
 }

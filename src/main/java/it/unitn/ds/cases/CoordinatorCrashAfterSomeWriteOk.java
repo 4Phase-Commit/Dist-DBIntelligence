@@ -24,12 +24,12 @@ import it.unitn.ds.AbstractReplica.Crash.Type;
  * </p>
  */
 public class CoordinatorCrashAfterSomeWriteOk extends AbstractCase {
-    public CoordinatorCrashAfterSomeWriteOk(String systemName, int numReplicas, int coordinatorId) {
-        super(systemName, numReplicas, coordinatorId);
+    public CoordinatorCrashAfterSomeWriteOk(int numReplicas, int coordinatorId) {
+        super(numReplicas, coordinatorId);
     }
 
     @Override
-    public void run() {
+    protected void Execute() {
         // TODO: fix once crash management is changed
         ActorRef client = system.actorOf(
                 Client.props(
@@ -50,13 +50,5 @@ public class CoordinatorCrashAfterSomeWriteOk extends AbstractCase {
 
         // New write to check if <e, i> were updated correctly
         SendWrite(4000, client, 3, 1, 40);
-
-        try {
-            System.out.println(">>> Press ENTER to continue");
-            System.in.read();
-        } catch (IOException e) {
-        }
-
-        system.terminate();
     }
 }

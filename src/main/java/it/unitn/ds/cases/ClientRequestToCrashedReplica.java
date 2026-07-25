@@ -8,12 +8,12 @@ import it.unitn.ds.Client;
 import it.unitn.ds.AbstractReplica.Crash.Type;
 
 public class ClientRequestToCrashedReplica extends AbstractCase {
-    public ClientRequestToCrashedReplica(String systemName, int numReplicas, int coordinatorId) {
-        super(systemName, numReplicas, coordinatorId);
+    public ClientRequestToCrashedReplica(int numReplicas, int coordinatorId) {
+        super(numReplicas, coordinatorId);
     }
 
     @Override
-    public void run() {
+    protected void Execute() {
         ActorRef client = system.actorOf(
                 Client.props(
                         1000,
@@ -27,13 +27,5 @@ public class ClientRequestToCrashedReplica extends AbstractCase {
         SendRead(0, client, 1, 1);
         SendRead(0, client, 1, 1);
         SendRead(0, client, 1, 1);
-
-        try {
-            System.out.println(">>> Press ENTER to continue");
-            System.in.read();
-        } catch (IOException e) {
-        }
-
-        system.terminate();
     }
 }

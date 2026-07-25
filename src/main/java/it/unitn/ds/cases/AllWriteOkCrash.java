@@ -22,12 +22,12 @@ import it.unitn.ds.AbstractReplica.Crash.Type;
  * </p>
  */
 public class AllWriteOkCrash extends AbstractCase {
-    public AllWriteOkCrash(String systemName, int numReplicas, int coordinatorId) {
-        super(systemName, numReplicas, coordinatorId);
+    public AllWriteOkCrash( int numReplicas, int coordinatorId) {
+        super( numReplicas, coordinatorId);
     }
 
     @Override
-    public void run() {
+    protected void Execute() {
         // TODO: fix once crash management is changed
         ActorRef client = system.actorOf(
                 Client.props(
@@ -49,13 +49,5 @@ public class AllWriteOkCrash extends AbstractCase {
         SendRead(3000, client, 1, 1);
         SendRead(3000, client, 2, 1);
         SendRead(3000, client, 3, 1);
-
-        try {
-            System.out.println(">>> Press ENTER to continue");
-            System.in.read();
-        } catch (IOException e) {
-        }
-
-        system.terminate();
     }
 }

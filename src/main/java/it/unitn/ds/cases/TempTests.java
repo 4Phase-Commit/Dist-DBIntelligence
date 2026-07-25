@@ -8,12 +8,12 @@ import it.unitn.ds.Client;
 import it.unitn.ds.AbstractReplica.Crash.Type;
 
 public class TempTests extends AbstractCase {
-    public TempTests(String systemName, int numReplicas, int coordinatorId) {
-        super(systemName, numReplicas, coordinatorId);
+    public TempTests(int numReplicas, int coordinatorId) {
+        super(numReplicas, coordinatorId);
     }
 
     @Override
-    public void run() {
+    protected void Execute() {
         ActorRef client = system.actorOf(
                 Client.props(
                         1000,

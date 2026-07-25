@@ -17,18 +17,17 @@ import it.unitn.ds.Replica;
  * Create a subclass that overrides the {@code run} method to create
  * new cases.
  */
-public class AbstractCase {
+public abstract class AbstractCase {
     protected int N_REPLICAS;
     protected int STARTING_COORDINATOR_ID;
 
     protected final ActorSystem system;
     protected Map<Integer, ActorRef> replicas;
 
-    public AbstractCase(String systemName, int numReplicas, int coordinatorId) {
+    public AbstractCase(int numReplicas, int coordinatorId) {
         N_REPLICAS = numReplicas;
         STARTING_COORDINATOR_ID = coordinatorId;
-
-        system = ActorSystem.create(systemName);
+        system = ActorSystem.create(getClass().getSimpleName());
 
         replicas = new HashMap<>(N_REPLICAS);
         for (int i = 0; i < N_REPLICAS; i++) {
@@ -43,6 +42,8 @@ public class AbstractCase {
         for (Map.Entry<Integer, ActorRef> entry : replicas.entrySet()) {
             entry.getValue().tell(initMsg, ActorRef.noSender());
         }
+
+        run();
     }
 
     public void SendRead(int delayMillis, ActorRef clientRef, int destinationId, int index) {
@@ -73,6 +74,8 @@ public class AbstractCase {
     }
 
     public void run() {
+        Execute();
+
         try {
             System.out.println(">>> Press ENTER to continue");
             System.in.read();
@@ -81,4 +84,6 @@ public class AbstractCase {
 
         system.terminate();
     }
+
+    protected abstract void Execute();
 }
