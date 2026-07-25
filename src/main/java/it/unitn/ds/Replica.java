@@ -14,10 +14,11 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Replica extends AbstractReplica {
-    private static final int HEARTBEAT_TIMEOUT_MS = 1100;
-    private static final int ELECTIONACK_TIMEOUT_MS = 1000;
-    public static final int ELECTION_TIMEOUT_MULTIPLIER = 2000;
-    public static final int SYNCHRONIZAZION_TIMEOUT = 2000;
+    private static final int HEARTBEAT_TIMEOUT_MS = 100;
+    private static final int ELECTIONACK_TIMEOUT_MS = 200;
+    public static final int ELECTION_TIMEOUT_MULTIPLIER = 400;
+    public static final int SYNCHRONIZAZION_TIMEOUT = 100;
+    private static final int RESTORE_TIMEOUT_MS = 1000;
     public static final int REQUEST_FORWARD_TIMEOUT = 2000;
     public static final int WRITEOK_TIMEOUT = 2000;
 
@@ -264,7 +265,7 @@ public class Replica extends AbstractReplica {
      */
     private void listenForHeartBeat() {
         heartbeatExpireTimer = getContext().system().scheduler().scheduleOnce(
-                Duration.create(HEARTBEAT_TIMEOUT_MS, TimeUnit.MILLISECONDS),
+                Duration.create(getCoordinatorBeatInterval() + HEARTBEAT_TIMEOUT_MS, TimeUnit.MILLISECONDS),
                 getSelf(),
                 new CoordinatorCrashed(currentCoordinator),
                 getContext().system().dispatcher(),
@@ -404,6 +405,9 @@ public class Replica extends AbstractReplica {
                 .match(WriteOK.class, msg -> {
                     OnCanCrashType(msg);
                     onWriteOK(msg);
+                })
+                .matchAny(a -> {
+                    debug("Received " + a + " but was ignored");
                 })
                 .build();
     }
@@ -721,7 +725,7 @@ public class Replica extends AbstractReplica {
         // Immutability is handled by the message class
         tell(new ReplicaPendingUpdates(pendingUpdates), replicas.get(currentCoordinator));
         restoreTimeout = getContext().system().scheduler().scheduleOnce(
-                Duration.create((long) SYNCHRONIZAZION_TIMEOUT * (indexOfReplica(id) + 1),
+                Duration.create(RESTORE_TIMEOUT_MS,
                         TimeUnit.MILLISECONDS),
                 getSelf(),
                 new RestoreTimeout(),
@@ -739,7 +743,6 @@ public class Replica extends AbstractReplica {
      */
     private void onReplicaPendingUpdates(ReplicaPendingUpdates updates) {
         coordinatorPendingRecovery.add(updates.pending);
-
         if (coordinatorPendingRecovery.size() >= (replicas.size() / 2) + 1) {
             List<Update> unique = coordinatorPendingRecovery.stream()
                     .flatMap(List::stream)
@@ -769,7 +772,6 @@ public class Replica extends AbstractReplica {
                 tell(new AbstractClient.WriteResult(true, a.update.request.index, a.update.request.value, id),
                         a.update.client);
             }
-
             // End of protocol
             getContext().become(createReceive());
             retryRequests = true;
@@ -863,13 +865,14 @@ public class Replica extends AbstractReplica {
                 epoch++;
                 updateSEQN = 0;
                 sendSyncUpdates(election);
+                coordinatorPendingRecovery.add(new ArrayList<>(pendingUpdates));
                 replicas.keySet().retainAll(election.updates.keySet()); // update the replica set
                 callbackOnCoordinatorElected(id); // the coordinator is now myself
             } else { // am not the leader to pass to the next one
                 debug("Cannot be coordinator but " + newCoordinator + " should be");
                 sendElection(id, election.updates, election.id);
                 electionTimeout = getContext().system().scheduler().scheduleOnce( // synchronizaion message timeout
-                        Duration.create((long) SYNCHRONIZAZION_TIMEOUT * (indexOfReplica(id) + 1),
+                        Duration.create((long) SYNCHRONIZAZION_TIMEOUT * getSystemNumberOfActors(),
                                 TimeUnit.MILLISECONDS),
                         getSelf(),
                         new ElectionTimeout(),
@@ -950,7 +953,13 @@ public class Replica extends AbstractReplica {
          new ElectionACKTimeout(e),
          getContext().system().dispatcher(),
          getSelf()));
+
+         OR JUST SIMPLY
+         
+         beginElection();
          */
+
+
     }
 
     /**

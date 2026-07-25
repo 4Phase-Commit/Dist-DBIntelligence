@@ -29,7 +29,7 @@ public class Main {
 
 //        new ReplicaCrashBeforeFirstElection(5,1);
 
-//        new CoordinatorCasualCrash(5, 0);
+        new CoordinatorCasualCrash(3, 0);
 
 //        new CoordinatorCrashAfterElection(5,1);
 
@@ -47,8 +47,8 @@ public class Main {
         // CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
         // correctRW.run();
 
-        TempTests tempTests = new TempTests(7, 0);
-        tempTests.run();
+//        TempTests tempTests = new TempTests(7, 0);
+//        tempTests.run();
 
         // ClientRequestToCrashedReplica reqToCrashedReplica = new
         // ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);
