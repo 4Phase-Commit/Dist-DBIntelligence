@@ -24,19 +24,20 @@ public class Main {
         Logger.setDestinationStdout();
         Logger.setDebugEnabled(true);
 
-        CoordinatorCasualCrash coordinatorCasualCrash = new CoordinatorCasualCrash("SimpleCoordinatorCrash",5,0);
-        coordinatorCasualCrash.run();
+        // CoordinatorCasualCrash coordinatorCasualCrash = new
+        // CoordinatorCasualCrash("SimpleCoordinatorCrash",5,0);
+        // coordinatorCasualCrash.run();
 
         // Testing a client execution and r/w logic for replicas
         // CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
         // correctRW.run();
 
-//        TempTests tempTests = new TempTests("tempTests", 7, 0);
+        TempTests tempTests = new TempTests("tempTests", 7, 0);
         tempTests.run();
 
         // ClientRequestToCrashedReplica reqToCrashedReplica = new
         // ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);
-//        // reqToCrashedReplica.run();
+        // // reqToCrashedReplica.run();
 
         // TODO: work in progress
         // CoordinatorCrashBeforeWOK coordinatorCrashBeforeWOK = new

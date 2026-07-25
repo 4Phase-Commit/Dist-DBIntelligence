@@ -27,6 +27,8 @@ public class TempTests extends AbstractCase {
 
         SendWrite(0, client, 6, 1, 10);
 
+        SendRead(4000, client, 5, 1);
+
         try {
             System.out.println(">>> Press ENTER to continue");
             System.in.read();

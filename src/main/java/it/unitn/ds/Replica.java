@@ -32,7 +32,7 @@ public class Replica extends AbstractReplica {
     private boolean acceptingUpdateAcks = false;
     private int updateACKCount;
     private int nextUpdateId;
-    private int currentUpdateId;
+    private UpdateId currentUpdateId;
     private boolean coordinatorBusy;
     private Queue<Update> coordinatorUpdateQueue;
 
@@ -51,7 +51,7 @@ public class Replica extends AbstractReplica {
     private final List<List<Update>> coordinatorPendingRecovery;
     private final Stack<AppliedUpdate> history;
 
-    public record WriteReq(ActorRef client, AbstractClient.WriteRequest request) {
+    public record UpdateId(int replica, int id) {
     }
 
     private enum State {
@@ -61,7 +61,14 @@ public class Replica extends AbstractReplica {
 
     private State state = State.NORMAL;
 
-    private final Queue<WriteReq> writeRequests;
+    /**
+     * Request received by a client that are yet to be forwarded to the coordinator
+     */
+    private final Queue<Update> writeRequests;
+    /** Requests sent to the coordinator but not yet broadcast by it */
+    private final Queue<Update> pendingRequests;
+    private boolean retryRequests = false;
+
     private final Queue<Serializable> requests;
     private final Queue<Update> pendingUpdates;
 
@@ -77,7 +84,10 @@ public class Replica extends AbstractReplica {
         // TODO: implement
         epoch = 0;
         updateSEQN = 0;
+
         writeRequests = new ArrayDeque<>();
+        pendingRequests = new ArrayDeque<>();
+
         requests = new ArrayDeque<>();
         history = new Stack<>();
         pendingUpdates = new ArrayDeque<>();
@@ -290,7 +300,7 @@ public class Replica extends AbstractReplica {
     private class ReplicaPendingUpdates implements Serializable {
         List<Update> pending;
 
-        public ReplicaPendingUpdates(Queue updateQueue) {
+        public ReplicaPendingUpdates(Queue<Update> updateQueue) {
             pending = Collections.unmodifiableList(new ArrayList<>(updateQueue));
         }
     }
@@ -328,7 +338,8 @@ public class Replica extends AbstractReplica {
                 .match(ReplicaPendingUpdates.class, this::onReplicaPendingUpdates)
                 .match(PendingRestore.class, this::onPendingRestore)
                 .match(RestoreTimeout.class, this::onRestoreTimeout)
-                // add requests
+                .match(AbstractClient.WriteRequest.class, this::onWriteRequest)
+                .match(UpdateRequest.class, this::onUpdateRequets)
                 .matchAny(a -> {
                 })
                 .build();
@@ -443,14 +454,17 @@ public class Replica extends AbstractReplica {
             return;
         }
 
-        Logger.log(String.format(
-                "[Replica %d] UpdateACK (%d) from replica: %s",
-                this.id,
-                updateACK.id,
-                getSender().path().name()));
+        log("UPDATEACK (" + updateACK.updateId.replica() + "," + updateACK.updateId.id() + ") from replica "
+                + getSender().path().name());
 
-        if (currentUpdateId != updateACK.id || !acceptingUpdateAcks) {
-            debug("Dropping ACK for update " + updateACK.id + " from " + getSender().path().name());
+        if (currentUpdateId == null) {
+            // If it's null then it must be the first update of a newly elected coordinator
+            currentUpdateId = updateACK.updateId;
+        }
+
+        if (!currentUpdateId.equals(updateACK.updateId) || !acceptingUpdateAcks) {
+            debug("Dropping ACK for update (" + updateACK.updateId.replica() + "," + updateACK.updateId.id() + ") from "
+                    + getSender().path().name());
             return;
         }
 
@@ -467,7 +481,7 @@ public class Replica extends AbstractReplica {
                 acceptingUpdateAcks = false;
             } else {
                 Update update = coordinatorUpdateQueue.poll();
-                currentUpdateId = update.id;
+                currentUpdateId = update.updateId;
                 broadcast(update, true);
             }
         }
@@ -535,7 +549,7 @@ public class Replica extends AbstractReplica {
                 request.value,
                 client.path().name()));
 
-        writeRequests.add(new WriteReq(client, request));
+        writeRequests.add(new Update(new UpdateId(id, ++nextUpdateId), request, client));
         getSelf().tell(new Drain(), getSelf());
     }
 
@@ -543,30 +557,36 @@ public class Replica extends AbstractReplica {
      * Function that handles write requests from the {@code writeRequests} queue
      */
     private void onDrain(Drain d) {
-        if (state != State.NORMAL || writeRequests.isEmpty()) {
-            return;
+        if (retryRequests && pendingRequests.isEmpty()) {
+            retryRequests = false;
         }
 
-        WriteReq r = writeRequests.poll();
+        Update u;
+        if (retryRequests) {
+            u = pendingRequests.poll();
+            debug("Retrying pending request with ID: " + u.printId());
+        } else {
+            if (writeRequests.isEmpty()) {
+                return;
+            }
+
+            u = writeRequests.poll();
+            pendingRequests.add(u);
+            debug("Pending request with ID: " + u.printId());
+        }
 
         Logger.log(String.format(
                 "[Replica %d] WRITE request (%d, %d) from %s, sending to the coordinator",
                 this.id,
-                r.request.index,
-                r.request.value,
-                r.client.path().name()));
-
-        requests.add(r.request);
-
-        // The extra step with the update request is needed to forward the client's
-        // ActorRef so we can know who to send the result to.
-        Update update = new Update(null, r.request, r.client);
+                u.request.index,
+                u.request.value,
+                u.client.path().name()));
 
         if (id == currentCoordinator) {
             // Skip network delay for self messages
-            getSelf().tell(new UpdateRequest(update), getSelf());
+            getSelf().tell(new UpdateRequest(u), getSelf());
         } else {
-            tell(new UpdateRequest(update), replicas.get(currentCoordinator));
+            tell(new UpdateRequest(u), replicas.get(currentCoordinator));
         }
 
         fowardTimeouts.add(getContext().system().scheduler().scheduleOnce( // ack timeout
@@ -594,19 +614,16 @@ public class Replica extends AbstractReplica {
             return;
         }
 
-        Update update = new Update(nextUpdateId++, updateRequest.update.request, updateRequest.update.client);
+        Update update = updateRequest.update;
 
-        Logger.log(String.format(
-                "[Replica %d] UPDATE REQUEST from: %s",
-                this.id,
-                getSender().path().name()));
+        log("UPDATE REQUEST (" + update.updateId.replica() + "," + update.updateId.id() + ")");
 
         if (coordinatorBusy) {
             coordinatorUpdateQueue.add(update);
         } else {
             coordinatorBusy = true;
-            currentUpdateId = update.id;
             acceptingUpdateAcks = true;
+            currentUpdateId = update.updateId;
             broadcast(update, true);
         }
     }
@@ -621,17 +638,21 @@ public class Replica extends AbstractReplica {
             return;
         }
 
-        Logger.log(String.format(
-                "[Replica %d] UPDATE from coordinator: %d",
-                this.id,
-                this.currentCoordinator));
+        log("UPDATE from coordinator: " + currentCoordinator);
+
         CancelTimeout(fowardTimeouts.poll());
+
+        if (!pendingRequests.isEmpty() && update.equals(pendingRequests.peek())) {
+            pendingRequests.poll();
+        }
+
         pendingUpdates.add(update);
+
         if (currentCoordinator == id) {
             // Skip network delay for self message
-            getSelf().tell(new UpdateACK(update.id), getSelf());
+            getSelf().tell(new UpdateACK(update.updateId), getSelf());
         } else {
-            tell(new UpdateACK(update.id), replicas.get(currentCoordinator));
+            tell(new UpdateACK(update.updateId), replicas.get(currentCoordinator));
         }
         writeokTimeouts.add(getContext().system().scheduler().scheduleOnce( // ack timeout
                 Duration.create(WRITEOK_TIMEOUT, TimeUnit.MILLISECONDS),
@@ -701,26 +722,20 @@ public class Replica extends AbstractReplica {
         coordinatorPendingRecovery.add(updates.pending);
 
         if (coordinatorPendingRecovery.size() >= (replicas.size() / 2) + 1) {
-            Map<Integer, Update> unique = new LinkedHashMap<>();
-            coordinatorPendingRecovery.stream()
+            List<Update> unique = coordinatorPendingRecovery.stream()
                     .flatMap(List::stream)
-                    .forEach(update -> unique.putIfAbsent(update.id, update));
-
-            Set<Integer> appliedIds = history.stream()
-                    .map(a -> a.update.id)
-                    .collect(Collectors.toSet());
-
-            List<Update> toPropagate = unique.values().stream()
-                    .filter(u -> !appliedIds.contains(u.id))
+                    .distinct()
                     .toList();
 
-            // Update the next id with the max one + 1
-            this.nextUpdateId = toPropagate.stream()
-                    .mapToInt(update -> update.id)
-                    .max()
-                    .orElse(history.isEmpty() ? 0 : history.get(history.size() - 1).update.id) + 1;
+            Set<UpdateId> appliedIds = history.stream()
+                    .map(a -> a.update.updateId)
+                    .collect(Collectors.toSet());
 
-            log("RESTORING pending updates: " + toPropagate + " with nextUpdateId=" + nextUpdateId);
+            List<Update> toPropagate = unique.stream()
+                    .filter(u -> !appliedIds.contains(u.updateId))
+                    .toList();
+
+            log("RESTORING pending updates: " + toPropagate);
 
             broadcast(new PendingRestore(toPropagate), false);
 
@@ -730,11 +745,16 @@ public class Replica extends AbstractReplica {
                 history.add(a);
                 locations[a.update.request.index] = a.update.request.value;
                 callbackOnUpdateApplied(a.update.request.index, a.update.request.value);
+
+                // Answer to the sender
+                tell(new AbstractClient.WriteResult(true, a.update.request.index, a.update.request.value, id),
+                        a.update.client);
             }
 
             // End of protocol
             getContext().become(createReceive());
             state = State.NORMAL;
+            retryRequests = true;
             getSelf().tell(new Drain(), getSelf());
             beginHeartBeat();
         }
@@ -759,6 +779,7 @@ public class Replica extends AbstractReplica {
      */
     private void onPendingRestore(PendingRestore restore) {
         CancelTimeout(restoreTimeout);
+        debug("Received restoration set from coordinator");
 
         // Apply updates
         for (Update u : restore.toRestore) {
@@ -771,6 +792,7 @@ public class Replica extends AbstractReplica {
         // Switch back to normal context
         getContext().become(createReceive());
         state = State.NORMAL;
+        retryRequests = true;
         getSelf().tell(new Drain(), getSelf());
 
         pendingUpdates.clear();
@@ -878,7 +900,7 @@ public class Replica extends AbstractReplica {
 
     // TODO: if electionstarted return;
     private void OnCrashedCoordinator(CoordinatorCrashed coordinatorCrashed) {
-//        if (isElectionFirstPhase) return;
+        // if (isElectionFirstPhase) return;
         CancelTimeout(heartbeatExpireTimer);
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);

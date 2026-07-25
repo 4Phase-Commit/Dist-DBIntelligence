@@ -6,6 +6,7 @@ import java.util.*;
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.japi.pf.ReceiveBuilder;
+import it.unitn.ds.Replica.UpdateId;
 
 public abstract class AbstractReplica extends AbstractActor {
     // === Constants ===
@@ -485,21 +486,25 @@ public abstract class AbstractReplica extends AbstractActor {
     }
 
     public static class Update implements Serializable {
-        public final Integer id;
+        public final UpdateId updateId;
         public final AbstractClient.WriteRequest request;
         public final ActorRef client;
 
-        public Update(Integer id, AbstractClient.WriteRequest request, ActorRef client) {
-            this.id = id;
+        public Update(UpdateId id, AbstractClient.WriteRequest request, ActorRef client) {
+            this.updateId = id;
             this.request = request;
             this.client = client;
+        }
+
+        public String printId() {
+            return ("(" + updateId.replica() + "," + updateId.id() + ")");
         }
 
         @Override
         public boolean equals(Object obj) {
             if (obj instanceof Update) {
                 Update o = (Update) obj;
-                return o.id == id && o.request.equals(this.request) && o.client.equals(this.client);
+                return o.updateId.replica() == updateId.replica() && o.updateId.id() == updateId.id();
             }
             return false;
         }
@@ -574,15 +579,15 @@ public abstract class AbstractReplica extends AbstractActor {
     }
 
     public static class UpdateACK implements Serializable {
-        public int id;
+        public UpdateId updateId;
 
-        UpdateACK(int id) {
-            this.id = id;
+        UpdateACK(UpdateId updateId) {
+            this.updateId = updateId;
         }
 
         @Override
         public String toString() {
-            return "UpdateACK " + id;
+            return "UpdateACK (" + updateId.replica() + "," + updateId.id() + ")";
         }
     }
 
