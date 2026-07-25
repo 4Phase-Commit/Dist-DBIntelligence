@@ -320,7 +320,10 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
-    // custom messages
+    // =================================================================================
+    // Custom Messages
+    // =================================================================================
+
     public static class HeartBeat implements Serializable {
         public final int currentCoordinator;
 
@@ -570,6 +573,28 @@ public abstract class AbstractReplica extends AbstractActor {
         public String toString() {
             return "WriteOK";
         }
+    }
+
+    public class Drain implements Serializable {
+    }
+
+    public class ReplicaPendingUpdates implements Serializable {
+        List<Update> pending;
+
+        public ReplicaPendingUpdates(Queue<Update> updateQueue) {
+            pending = Collections.unmodifiableList(new ArrayList<>(updateQueue));
+        }
+    }
+
+    public class PendingRestore implements Serializable {
+        List<Update> toRestore;
+
+        public PendingRestore(List<Update> updates) {
+            toRestore = Collections.unmodifiableList(new ArrayList<>(updates));
+        }
+    }
+
+    public class RestoreTimeout implements Serializable {
     }
 
     // =================================================================================

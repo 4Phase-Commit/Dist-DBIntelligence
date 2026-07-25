@@ -18,26 +18,23 @@ public class Replica extends AbstractReplica {
     private static final int ELECTIONACK_TIMEOUT_MS = 200;
     public static final int ELECTION_TIMEOUT_MULTIPLIER = 400;
     public static final int SYNCHRONIZAZION_TIMEOUT = 100;
-    private static final int RESTORE_TIMEOUT_MS = 1000;
-    public static final int REQUEST_FORWARD_TIMEOUT = 2000;
-    public static final int WRITEOK_TIMEOUT = 2000;
+    private static final int RESTORE_TIMEOUT_MS = 500;
+    public static final int REQUEST_FORWARD_TIMEOUT = 500;
+    public static final int WRITEOK_TIMEOUT = 500;
 
     private boolean amICoordinator;
-    private int currentCoordinator;
     private boolean isElectionFirstPhase;
+    private boolean acceptingUpdateAcks = false;
+    private boolean coordinatorBusy;
+    private boolean hasCrashed;
+    private boolean retryRequests = false;
+
+    private int currentCoordinator;
     private int msgBeforeCrash;
     private int epoch;
     private int updateSEQN;
-    private boolean hasCrashed;
-
-    private boolean acceptingUpdateAcks = false;
     private int updateACKCount;
     private int nextUpdateId;
-    private UpdateId currentUpdateId;
-    private boolean coordinatorBusy;
-    private Queue<Update> coordinatorUpdateQueue;
-
-    private Crash currentCrash;
 
     private TreeMap<Integer, ActorRef> replicas;
 
@@ -45,27 +42,29 @@ public class Replica extends AbstractReplica {
     private Cancellable heartbeatExpireTimer;
     private Cancellable electionTimeout;
     private Cancellable restoreTimeout;
+
     private final Queue<Cancellable> fowardTimeouts;
     private final Queue<Cancellable> writeokTimeouts;
     private final Queue<Cancellable> electionAckExpireTimers;
 
-    private final List<List<Update>> coordinatorPendingRecovery;
-    private final Stack<AppliedUpdate> history;
-
-    public record UpdateId(int replica, int id) {
-    }
+    private final Queue<Update> coordinatorUpdateQueue;
     /**
      * Request received by a client that are yet to be forwarded to the coordinator
      */
     private final Queue<Update> writeRequests;
+    private final List<List<Update>> coordinatorPendingRecovery;
+    private final Stack<AppliedUpdate> history;
     /** Requests sent to the coordinator but not yet broadcast by it */
     private final Queue<Update> pendingRequests;
-    private boolean retryRequests = false;
-
-    private final Queue<Serializable> requests;
     private final Queue<Update> pendingUpdates;
 
-    private int[] locations;
+    private final int[] locations;
+
+    private Crash currentCrash;
+
+    public record UpdateId(int replica, int id) {
+    }
+    private UpdateId currentUpdateId;
 
     public Replica(int id) {
         this(id, AbstractReplica.MIN_LATENCY, AbstractReplica.MAX_LATENCY, AbstractReplica.COORDINATOR_BEAT_INTERVAL,
@@ -74,24 +73,22 @@ public class Replica extends AbstractReplica {
 
     public Replica(int id, int minLatency, int maxLatency, int coordinatorBeatInterval, Optional<ActorRef> listener) {
         super(id, minLatency, maxLatency, coordinatorBeatInterval, listener);
-        // TODO: implement
         epoch = 0;
         updateSEQN = 0;
 
         writeRequests = new ArrayDeque<>();
         pendingRequests = new ArrayDeque<>();
-
-        requests = new ArrayDeque<>();
         history = new Stack<>();
         pendingUpdates = new ArrayDeque<>();
         electionAckExpireTimers = new ArrayDeque<>();
         fowardTimeouts = new ArrayDeque<>();
         writeokTimeouts = new ArrayDeque<>();
         coordinatorPendingRecovery = new ArrayList<>();
+        coordinatorUpdateQueue = new ArrayDeque<>();
 
         locations = new int[POSITIONS_LIST_LENGTH];
+
         nextUpdateId = 0;
-        coordinatorUpdateQueue = new ArrayDeque<>();
     }
 
     public static Props props(int id, int minLatency, int maxLatency, int coordinatorBeatInterval) {
@@ -138,7 +135,6 @@ public class Replica extends AbstractReplica {
 
     @Override
     public void initSystem(InitSystem sysInit) {
-        // TODO: implement
         amICoordinator = sysInit.coordinator_id == id;
         currentCoordinator = sysInit.coordinator_id;
         replicas = new TreeMap<>(sysInit.group);
@@ -150,7 +146,6 @@ public class Replica extends AbstractReplica {
         } else {
             beginHeartBeat();
         }
-
     }
 
     /**
@@ -246,11 +241,10 @@ public class Replica extends AbstractReplica {
         for (Map.Entry<Integer, ActorRef> entry : replicas.entrySet()) {
             OnCanCrashType(msg);
 
-            if (isElectionFirstPhase || hasCrashed)
-                return;
-            if (entry.getKey() == id && !toMyself)
-                continue;
-            else if (entry.getKey() == id && toMyself) {
+            if (isElectionFirstPhase || hasCrashed) return;
+
+            if (entry.getKey() == id && !toMyself) continue;
+            else if (entry.getKey() == id) {
                 // Skip network delays if sending to itself
                 entry.getValue().tell(msg, getSelf());
                 continue;
@@ -321,38 +315,15 @@ public class Replica extends AbstractReplica {
         }
     }
 
-    private class Drain implements Serializable {
-    }
-
-    private class ReplicaPendingUpdates implements Serializable {
-        List<Update> pending;
-
-        public ReplicaPendingUpdates(Queue<Update> updateQueue) {
-            pending = Collections.unmodifiableList(new ArrayList<>(updateQueue));
-        }
-    }
-
-    private class PendingRestore implements Serializable {
-        List<Update> toRestore;
-
-        public PendingRestore(List<Update> updates) {
-            toRestore = Collections.unmodifiableList(new ArrayList<>(updates));
-        }
-    }
-
-    private class RestoreTimeout implements Serializable {
-    }
-
     public final Receive crashedReceive() {
         return createBaseReceiveBuilder()
-                .matchAny(a -> {
+                .matchAny(_ -> {
                 })
                 .build();
     }
 
     public final Receive electionReceive() {
         return createBaseReceiveBuilder()
-                // TODO add your message handlers here .match(, )
                 .match(ElectionStarted.class, this::OnElectionStart)
                 .match(Election.class, msg -> {
                     OnCanCrashType(msg);
@@ -369,7 +340,7 @@ public class Replica extends AbstractReplica {
                 .match(AbstractClient.ReadRequest.class, this::onReadRequest)
                 .match(AbstractClient.WriteRequest.class, this::onWriteRequest)
                 .match(UpdateRequest.class, this::onUpdateRequets)
-                .matchAny(a -> {
+                .matchAny(_ -> {
                 })
                 .build();
     }
@@ -377,7 +348,6 @@ public class Replica extends AbstractReplica {
     @Override
     public final Receive createReceive() {
         return createBaseReceiveBuilder()
-                // TODO add your message handlers here .match(, )
                 .match(HeartBeat.class, msg -> {
                     OnCanCrashType(msg);
                     OnHeartBeat(msg);
@@ -406,9 +376,7 @@ public class Replica extends AbstractReplica {
                     OnCanCrashType(msg);
                     onWriteOK(msg);
                 })
-                .matchAny(a -> {
-                    debug("Received " + a + " but was ignored");
-                })
+                .matchAny(a -> debug("Received " + a + " but was ignored"))
                 .build();
     }
 
@@ -419,8 +387,7 @@ public class Replica extends AbstractReplica {
      * if the message count meets or exceeds the crash threshold.
      */
     private void OnCanCrashType(Serializable msg) {
-        if (currentCrash == null)
-            return;
+        if (currentCrash == null) return;
 
         boolean isMatch = switch (currentCrash.type) {
             case Heartbeat -> msg instanceof HeartBeat;
@@ -439,10 +406,9 @@ public class Replica extends AbstractReplica {
         }
     }
 
-    private void onWriteOK(WriteOK writeOK) {
-        if (hasCrashed) {
-            return;
-        }
+    private void onWriteOK(WriteOK ignoredWriteOK) {
+        if (hasCrashed) return;
+
         log("WRITEOK from coordinator: " + this.id + " " + getSender().path().name());
 
         CancelTimeout(writeokTimeouts.poll());
@@ -472,7 +438,7 @@ public class Replica extends AbstractReplica {
      * <p>
      * This is assumed to be received by the coordinator only.
      * Once the quorum is reached the replica updates itself.
-     *
+     * <p>
      * After sending the WRITEOK broadcast it will begin to
      * handle the next update in the {@code coordinatorUpdateQueue}
      * if there is one.
@@ -566,33 +532,27 @@ public class Replica extends AbstractReplica {
             retryRequests = false;
         }
 
-        Update u;
+        Update nextUpdate;
         if (retryRequests) {
-            u = pendingRequests.poll();
-            debug("Retrying pending request with ID: " + u.printId());
+            nextUpdate = pendingRequests.poll();
+            debug("Retrying pending request with ID: " + nextUpdate.printId());
         } else {
             if (writeRequests.isEmpty()) {
                 return;
             }
 
-            u = writeRequests.poll();
-            pendingRequests.add(u);
-            debug("Pending request with ID: " + u.printId());
+            nextUpdate = writeRequests.poll();
+            pendingRequests.add(nextUpdate);
+            debug("Pending request with ID: " + nextUpdate.printId());
         }
 
-        debug("WRITE request (" + u.request.index + ","+ u.request.value + ") from " + u.client.path().name() + ", sending to the coordinator");
-
-        requests.add(u.request);
-
-        // The extra step with the update request is needed to forward the client's
-        // ActorRef so we can know who to send the result to.
-        Update update = new Update(null, u.request, u.client);
+        debug("WRITE request (" + nextUpdate.request.index + ","+ nextUpdate.request.value + ") from " + nextUpdate.client.path().name() + ", sending to the coordinator");
 
         if (id == currentCoordinator) {
             // Skip network delay for self messages
-            getSelf().tell(new UpdateRequest(u), getSelf());
+            getSelf().tell(new UpdateRequest(nextUpdate), getSelf());
         } else {
-            tell(new UpdateRequest(u), replicas.get(currentCoordinator));
+            tell(new UpdateRequest(nextUpdate), replicas.get(currentCoordinator));
         }
 
         fowardTimeouts.add(getContext().system().scheduler().scheduleOnce( // ack timeout
@@ -737,7 +697,7 @@ public class Replica extends AbstractReplica {
      * After a SYNCHRONIZATION, replicas send their pendingUpdates queues to
      * the coordinator with the goal to restore updates that may have been
      * acknowledged by a quorum before the previous coordinator crashed.
-     *
+     * <p>
      * The coordinator selects the eligible updates and sends them back to the
      * replicas.
      */
@@ -887,7 +847,6 @@ public class Replica extends AbstractReplica {
      * via {@code AbstractReplica::tell()}.
      */
     private void OnSendHeartBeat(SendHeartBeat sendHeartBeat) {
-//        tell(new HeartBeat(sendHeartBeat.replicaId, id), sendHeartBeat.replica);
         broadcast(new HeartBeat(id),false);
     }
 
