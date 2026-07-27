@@ -14,6 +14,8 @@ Beyond heartbeats, the coordinator is responsible for critical synchronization d
 \begin{itemize}
     \item Sending \texttt{WriteOK} messages to the replicas upon reaching a consensus quorum.
     \item Broadcasting synchronization messages immediately after a successful election to align the state of the network.
+    \item Restoring updates that were left pending at the time of
+        the previous coordinator's crash
 \end{itemize}
 
 \subsubsection{Update Protocol}
@@ -32,6 +34,7 @@ The protocol works as follows:
     \item The coordinator counts the ACKs until it has received enough to reach the quorum. It then broadcasts the \texttt{WRITEOK} message.
     \item Replicas receive the \texttt{WRITEOK} message and apply the update
 \end{enumerate}
+
 If at any point a timeout expires before the corresponding message is received then the replica holding said timeout will consider the
 coordinator as crashed and will begin the election protocol. The election protocol details how they system recovers from partial updates.
 
@@ -50,3 +53,4 @@ For every election message sent or forwarded, the sender expects an acknowledgme
 If an ACK failure occurs during the second phase of the election (i.e., when the election message traverses the ring for the second time), the replica removes the history entry previously inserted by that crashed node during the first phase. This ensures that the coordinator receives an up-to-date topology of active nodes. Furthermore, if the crashed node happened to be the potential new coordinator, it is removed immediately, allowing the remaining replicas to locate an alternative coordinator without restarting the entire election protocol from scratch.
 Finally, crashes are simulated in strict accordance with the project specifications. The system evaluates whether a crash condition has been met—and tracks the number of remaining messages before a crash occurs—every time a message type supported by the crash configuration is processed.
 
+% TODO: Mention the recovery of pending updates

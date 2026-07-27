@@ -15,28 +15,26 @@ Due to the assumption of having reliable, FIFO communication channels as well as
 were implemented as queues of \texttt{Cancellable} timeouts. New timeouts are added to the queue and they fire a timeout message when they
 expire. When a timeout needs to be canceled it is first popped from the queue. This is safe because of the FIFO channels, which ensure
 messages arrive, are processed (and therefore also answered) in order so there is no risk of cancelling the wrong timeout. If one timeout
-expires then the recipient must have crashed, meaning that all other timeouts in the queue will eventually expire too. Timeouts are
-cancelled during elections.
+expires then the recipient must have crashed, meaning that all other timeouts in the queue will eventually expire too. Previous timeouts are
+canceled upon starting a new election.
 
 \subsubsection{Update protocol}
-When a write request is received by a replica it is added to a queue. Whenever the replica is ready (i.e. there's no election going on),
-it begins sending the enqueued messages to the coordinator as \texttt{UpdateRequest}. The requests include the \texttt{ActorRef}
-of the sender to allow for sending the result to the client. The coordinator assigns an ID to each update (a monotonically increasing integer)
-and adds it to a queue. Updates from the queue are broadcast to all replicas, including the coordinator itself. 
+Write requests received by clients are assigned an ID, attached the sender's \texttt{ActorRef} and added to a queue, where they are sent one
+at a time to the coordinator (or accumulated if an election is in progress). Requests sent are moved to a second queue to keep track of
+messages that might need to be re-sent. Requests are sent directly from this second queue when ending an election to try again after the
+previous coordinator crashed. The coordinator enqueues incoming requests and broadcasts the \texttt{UPDATE} message for them, one by one.
 
+All replicas, when receiving an update message, add the update to a "pending" queue and reply with an \texttt{UPDATEACK} that contains the
+update's ID. They also check if that update is the first request in their second queue and if so, they remove it.
+The coordinator also performs these operations like any other replica.
 Note that broadcast messages sent to oneself will ignore the simulated network delays to simulate the use of internal message passing.
 This was implemented using Akka's \texttt{tell} function instead of the custom one defined in \texttt{AbstractReplica}.
 Messages sent to different replicas will use the network delay as normal.
 
-Upon receiving an \texttt{Update} message, replicas add the update to a pending updates queue and respond to the coordinator with an
-\texttt{UpdateACK}, containing the ID of the update. A timeout is issued for the expected \texttt{WRITEOK} message.\
-The coordinator keeps count of how many \texttt{UpdateACK} it has received (with the correct ID, to avoid situation where a late ACK may
-affect a later update). Once it has received enough for a strict majority of the maximum amount of correct replicas in the system it
-broadcasts a \texttt{WRITEOK} message.
-
-Upon receiving a \texttt{WRITEOK} message, all replicas cancel the corresponding timeout, pop the current pending update from the queue and
-apply it. The specified value is written at the specified index of the local \texttt{locations} array and the combination of update,
-epoch number and sequence number is added to the \texttt{history} stack for future potential recoveries.
+The coordinator, upon receiving enough ACKs to reach the quorum, broadcasts an empty \texttt{WRITEOK} message. When a replica receives a 
+\texttt{WRITEOK}, it applies the first update in the "pending" queue and adds it to its history (attaching the epoch number and sequence
+number for potential future recoveries). The replica that first sent the request Will also send a \texttt{WriteResult} to the client.
+Timeouts are in place to detect a potential coordinator crash during these operations.
 
 \subsubsection{Election protocol}
 Upon receiving an \texttt{ElectionStarted} message, a replica removes the current coordinator from its active list. As outlined in the system design, only the replica with the smallest index is authorized to immediately initiate the actual election process. The remaining replicas defer their action by a timeout calculated dynamically as:
