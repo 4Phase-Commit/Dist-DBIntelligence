@@ -16,8 +16,8 @@ import java.util.stream.Stream;
 public class Replica extends AbstractReplica {
     private static final int HEARTBEAT_TIMEOUT_MS = 100;
     private static final int ELECTIONACK_TIMEOUT_MS = 200;
-    public static final int ELECTION_TIMEOUT_MULTIPLIER = 400;
-    public static final int SYNCHRONIZAZION_TIMEOUT = 100;
+    private static final int ELECTION_TIMEOUT_MULTIPLIER = 400;
+    private static final int SYNCHRONIZAZION_TIMEOUT = 100;
     private static final int RESTORE_TIMEOUT_MS = 500;
     public static final int REQUEST_FORWARD_TIMEOUT = 1000;
     public static final int WRITEOK_TIMEOUT = 1000;
