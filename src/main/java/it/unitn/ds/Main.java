@@ -1,18 +1,8 @@
 package it.unitn.ds;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.TimeUnit;
-
-import akka.actor.ActorRef;
-
-import akka.actor.ActorSystem;
-import akka.actor.Props;
-import it.unitn.ds.AbstractReplica.InitSystem;
-import it.unitn.ds.cases.*;
-import scala.concurrent.duration.Duration;
+import it.unitn.ds.cases.AllWriteOkCrash;
+import it.unitn.ds.cases.CoordinatorCrashAfterSomeWriteOk;
+import it.unitn.ds.cases.CorrectRW;
 
 public class Main {
 
@@ -46,7 +36,10 @@ public class Main {
         // CorrectRW correctRW = new CorrectRW("CorrectRW", 4, 0);
         // correctRW.run();
 
-        new TempTests(7, 0);
+        // new TempTests(7, 0);
+        // new CorrectRW(7, 0);
+        // new AllWriteOkCrash(5, 0);
+        new CoordinatorCrashAfterSomeWriteOk(7, 0);
 
         // ClientRequestToCrashedReplica reqToCrashedReplica = new
         // ClientRequestToCrashedReplica("ReqToCrashed", 5, 0);

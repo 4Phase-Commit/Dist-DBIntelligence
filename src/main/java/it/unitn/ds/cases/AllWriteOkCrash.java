@@ -1,10 +1,8 @@
 package it.unitn.ds.cases;
 
-import java.io.IOException;
 import java.util.Optional;
 
 import akka.actor.ActorRef;
-import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.Client;
 import it.unitn.ds.AbstractReplica.Crash.Type;
 
@@ -22,13 +20,12 @@ import it.unitn.ds.AbstractReplica.Crash.Type;
  * </p>
  */
 public class AllWriteOkCrash extends AbstractCase {
-    public AllWriteOkCrash( int numReplicas, int coordinatorId) {
-        super( numReplicas, coordinatorId);
+    public AllWriteOkCrash(int numReplicas, int coordinatorId) {
+        super(numReplicas, coordinatorId);
     }
 
     @Override
     protected void Execute() {
-        // TODO: fix once crash management is changed
         ActorRef client = system.actorOf(
                 Client.props(
                         1000,

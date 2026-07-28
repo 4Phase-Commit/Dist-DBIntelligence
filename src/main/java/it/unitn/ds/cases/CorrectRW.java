@@ -1,6 +1,5 @@
 package it.unitn.ds.cases;
 
-import java.io.IOException;
 import java.util.Optional;
 
 import akka.actor.ActorRef;

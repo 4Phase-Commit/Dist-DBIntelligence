@@ -30,7 +30,6 @@ public class CoordinatorCrashAfterSomeWriteOk extends AbstractCase {
 
     @Override
     protected void Execute() {
-        // TODO: fix once crash management is changed
         ActorRef client = system.actorOf(
                 Client.props(
                         1000,

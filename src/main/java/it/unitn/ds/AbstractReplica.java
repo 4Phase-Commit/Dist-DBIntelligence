@@ -474,7 +474,7 @@ public abstract class AbstractReplica extends AbstractActor {
         }
 
         public String printId() {
-            return ("(" + updateId.replica() + "," + updateId.id() + ")");
+            return ("<" + updateId.replica() + "," + updateId.id() + ">");
         }
 
         @Override

@@ -1,12 +1,10 @@
 package it.unitn.ds.cases;
 
-import java.io.IOException;
 import java.util.Optional;
 
 import akka.actor.ActorRef;
-import it.unitn.ds.AbstractReplica;
-import it.unitn.ds.Client;
 import it.unitn.ds.AbstractReplica.Crash.Type;
+import it.unitn.ds.Client;
 
 /**
  * Case in which the coordinator crashes after issuing an UPDATE
@@ -21,20 +19,18 @@ import it.unitn.ds.AbstractReplica.Crash.Type;
  * <li>The acknowledged update is recovered and re-attempted by the new
  * coordinator</li>
  * <li>Upon the second crash, a new coordinator is elected</li>
- * <li>The partially disseminated update was no seen by enough replicas and is
- * dropped
+ * <li>The partially disseminated update is restored by the new coordinator
  * <li>
  * </ul>
  * </p>
  */
-class CoordinatorCrashAfterSomeUpdate extends AbstractCase {
-    public CoordinatorCrashAfterSomeUpdate( int numReplicas, int coordinatorId) {
-        super( numReplicas, coordinatorId);
+public class CoordinatorCrashAfterSomeUpdate extends AbstractCase {
+    public CoordinatorCrashAfterSomeUpdate(int numReplicas, int coordinatorId) {
+        super(numReplicas, coordinatorId);
     }
 
     @Override
     protected void Execute() {
-        // TODO: fix the crash scheduling once they are changed
         ActorRef client = system.actorOf(
                 Client.props(
                         1000,

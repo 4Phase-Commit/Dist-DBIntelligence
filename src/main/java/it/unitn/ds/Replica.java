@@ -385,7 +385,7 @@ public class Replica extends AbstractReplica {
                     OnCanCrashType(msg);
                     onWriteOK(msg);
                 })
-                .matchAny(a -> debug("Received " + a + " but was ignored"))
+                .matchAny(m -> debug("Ignored message " + m + " from " + getSender().path().name()))
                 .build();
     }
 
@@ -459,7 +459,7 @@ public class Replica extends AbstractReplica {
             return;
         }
 
-        log("UPDATEACK (" + updateACK.updateId.replica() + "," + updateACK.updateId.id() + ") from replica "
+        log("UPDATEACK <" + updateACK.updateId.replica() + "," + updateACK.updateId.id() + "> from replica "
                 + getSender().path().name());
 
         if (currentUpdateId == null) {
@@ -468,7 +468,7 @@ public class Replica extends AbstractReplica {
         }
 
         if (!currentUpdateId.equals(updateACK.updateId) || !acceptingUpdateAcks) {
-            debug("Dropping ACK for update (" + updateACK.updateId.replica() + "," + updateACK.updateId.id() + ") from "
+            debug("Dropping ACK for update <" + updateACK.updateId.replica() + "," + updateACK.updateId.id() + "> from "
                     + getSender().path().name());
             return;
         }
@@ -504,10 +504,10 @@ public class Replica extends AbstractReplica {
         // Read immediately, return whatever this replica has
         if (request.index >= this.locations.length || request.index < 0) {
             tell(new ReadResult(false, request.index, null, this.id), client);
-            debug("Received READ request " + request.index + " from " + client.path().name() + "FAILED");
+            debug("READ request " + request.index + " from " + client.path().name() + " - FAILED");
         } else {
             tell(new ReadResult(true, request.index, this.locations[request.index], this.id), client);
-            debug("Received READ request " + request.index + " from " + client.path().name() + "SUCCESS");
+            debug("READ request " + request.index + " from " + client.path().name() + " - SUCCESS");
         }
     }
 
@@ -595,7 +595,7 @@ public class Replica extends AbstractReplica {
 
         Update update = updateRequest.update;
 
-        log("UPDATE REQUEST (" + update.updateId.replica() + "," + update.updateId.id() + ")");
+        log("UPDATE REQUEST <" + update.updateId.replica() + "," + update.updateId.id() + ">");
 
         if (coordinatorBusy) {
             coordinatorUpdateQueue.add(update);
@@ -701,6 +701,8 @@ public class Replica extends AbstractReplica {
             callbackOnUpdateApplied(u.update.request.index, u.update.request.value);
         }
 
+        log("Sending pending queue to the coordinator (Size: " + pendingUpdates.size() + ")");
+
         // Immutability is handled by the message class
         tell(new ReplicaPendingUpdates(pendingUpdates), replicas.get(currentCoordinator));
         restoreTimeout = getContext().system().scheduler().scheduleOnce(
@@ -736,7 +738,7 @@ public class Replica extends AbstractReplica {
                     .filter(u -> !appliedIds.contains(u.updateId))
                     .toList();
 
-            log("RESTORING pending updates: " + toPropagate);
+            log("RESTORING pending updates: " + toPropagate.size());
 
             broadcast(new PendingRestore(toPropagate), false);
 
@@ -778,7 +780,7 @@ public class Replica extends AbstractReplica {
      */
     private void onPendingRestore(PendingRestore restore) {
         CancelTimeout(restoreTimeout);
-        debug("Received restoration set from coordinator");
+        debug("Received restoration set from coordinator (Size: " + restore.toRestore.size() + ")");
 
         // Apply updates
         for (Update u : restore.toRestore) {
@@ -920,7 +922,6 @@ public class Replica extends AbstractReplica {
             return;
         log("From " + electionStarted.replicaId + " the election is started");
         isElectionFirstPhase = true;
-        replicas.remove(currentCoordinator); // remove current coordinator
         callbackOnElectionStarted(currentCoordinator);
 
         int lowestKey = replicas.firstKey();
@@ -935,6 +936,8 @@ public class Replica extends AbstractReplica {
             log("Begun the election");
             beginElection(); // the first must send the election directly
         }
+
+        getContext().become(electionReceive());
 
         //// NOTE: this is the simple implementation where every one send the election
         //// msg
