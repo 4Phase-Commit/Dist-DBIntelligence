@@ -364,14 +364,6 @@ public class Replica extends AbstractReplica {
                 .match(SendHeartBeat.class, this::OnSendHeartBeat)
                 .match(CoordinatorCrashed.class, this::OnCrashedCoordinator)
                 .match(ElectionStarted.class, this::OnElectionStart)
-                .match(Election.class, msg -> {
-                    OnCanCrashType(msg);
-                    OnElection(msg);
-                })
-                .match(ElectionTimeout.class, this::OnElectionTimeout)
-                .match(ElectionACK.class, this::OnElectionACK)
-                .match(ElectionACKTimeout.class, this::OnElectionACKTimeout)
-                .match(Synchronization.class, this::onSynchronization)
                 .match(Update.class, msg -> {
                     OnCanCrashType(msg);
                     onUpdate(msg);
@@ -433,6 +425,7 @@ public class Replica extends AbstractReplica {
         debug("New history: " + this.id + " " + history);
 
         locations[update.request.index] = update.request.value;
+
         callbackOnUpdateApplied(update.request.index, update.request.value);
 
         if (update.request.replica == getSelf()) {
@@ -698,6 +691,7 @@ public class Replica extends AbstractReplica {
         for (AppliedUpdate u : synchronization.updates) {
             history.push(u);
             locations[u.update.request.index] = u.update.request.value;
+
             callbackOnUpdateApplied(u.update.request.index, u.update.request.value);
         }
 
@@ -747,6 +741,7 @@ public class Replica extends AbstractReplica {
                 AppliedUpdate a = new AppliedUpdate(u, epoch, updateSEQN++);
                 history.add(a);
                 locations[a.update.request.index] = a.update.request.value;
+
                 callbackOnUpdateApplied(a.update.request.index, a.update.request.value);
 
                 // Answer to the sender
@@ -787,6 +782,7 @@ public class Replica extends AbstractReplica {
             AppliedUpdate a = new AppliedUpdate(u, epoch, updateSEQN++);
             history.add(a);
             locations[a.update.request.index] = a.update.request.value;
+
             callbackOnUpdateApplied(a.update.request.index, a.update.request.value);
 
             // Avoids retrying a restored update if other replicas have received it in their
@@ -857,6 +853,7 @@ public class Replica extends AbstractReplica {
                 sendSyncUpdates(election);
                 coordinatorPendingRecovery.add(new ArrayList<>(pendingUpdates));
                 replicas.keySet().retainAll(election.updates.keySet()); // update the replica set
+
                 callbackOnCoordinatorElected(id); // the coordinator is now myself
             } else { // am not the leader to pass to the next one
                 debug("Cannot be coordinator but " + newCoordinator + " should be");
@@ -920,8 +917,17 @@ public class Replica extends AbstractReplica {
     private void OnElectionStart(ElectionStarted electionStarted) {
         if (isElectionFirstPhase || hasCrashed)
             return;
-        log("From " + electionStarted.replicaId + " the election is started");
+        // clear timeout in case this replica did not receive a crashcoordinator message before
+        CancelTimeout(heartbeatExpireTimer);
+        CancelTimeout(fowardTimeouts);
+        CancelTimeout(writeokTimeouts);
+
+        debug("From " + electionStarted.replicaId + " the election is started");
+
         isElectionFirstPhase = true;
+        getContext().become(electionReceive());
+        replicas.remove(currentCoordinator);
+
         callbackOnElectionStarted(currentCoordinator);
 
         int lowestKey = replicas.firstKey();
@@ -975,11 +981,9 @@ public class Replica extends AbstractReplica {
         CancelTimeout(heartbeatExpireTimer);
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);
-        getContext().become(electionReceive());
         if (isElectionFirstPhase)
             return;
         log("The coordinator crashed");
-        replicas.remove(currentCoordinator); // remove current coordinator (REMOVE THIS BECAUSE IS REDUNTANT)
         broadcast(new ElectionStarted(id, currentCoordinator), true);
     }
 
