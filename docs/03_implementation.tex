@@ -9,7 +9,7 @@ In accordance with the project specifications, if a replica does not receive a h
 
 \subsubsection{Timeouts}
 Due to the assumption of having reliable, FIFO communication channels as well as knowing that crashed nodes never recover, timeouts
-were implemented as queues of \texttt{Cancellable} timeouts. New timeouts are added to the queue and they fire a timeout message when they
+were implemented as queues of \texttt{Cancellable} timeouts. New timeouts with the same purposes are added to a dedicated queue and they fire a timeout message when they
 expire. When a timeout needs to be canceled it is first popped from the queue. This is safe because of the FIFO channels, which ensure
 messages arrive, are processed (and therefore also answered) in order so there is no risk of cancelling the wrong timeout. If one timeout
 expires then the recipient must have crashed, meaning that all other timeouts in the queue will eventually expire too. Previous timeouts are
@@ -18,8 +18,7 @@ canceled upon starting a new election.
 \subsubsection{Update protocol}
 Write requests received by clients are assigned an ID, attached the sender's \texttt{ActorRef} and added to a queue, where they are sent one
 at a time to the coordinator (or accumulated if an election is in progress). Requests sent are moved to a second queue to keep track of
-messages that might need to be re-sent. Requests are sent directly from this second queue when ending an election to try again after the
-previous coordinator crashed. The coordinator enqueues incoming requests and broadcasts the \texttt{UPDATE} message for them, one by one.
+messages that might need to be re-sent. After an election the requests in the second queue are added in front of the original queue to re-attempt sending them to the coordinator.
 
 All replicas, when receiving an update message, add the update to a "pending" queue and reply with an \texttt{UPDATEACK} that contains the
 update's ID. They also check if that update is the first request in their second queue and if so, they remove it.
@@ -73,4 +72,4 @@ To implement this deferred crash detection, we designed a dedicated evaluation f
     \item Increment a message counter tracking the specific message type.
     \item Compare the counter against the threshold specified in the crash command.
 \end{enumerate}
-Once the incoming message count matches the crash trigger threshold, the replica executes an immediate shutdown.
+Once the incoming message count matches the crash trigger threshold, the replica executes an immediate crash.

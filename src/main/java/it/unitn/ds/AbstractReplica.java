@@ -324,6 +324,9 @@ public abstract class AbstractReplica extends AbstractActor {
     // Custom Messages
     // =================================================================================
 
+    /**
+     * A control message periodically broadcast by the active coordinator to all replicas at a constant time interval to signal liveness.
+     */
     public static class HeartBeat implements Serializable {
         public final int currentCoordinator;
 
@@ -346,9 +349,15 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
+    /**
+     * A self-targeted message scheduled by the coordinator to trigger its own heartbeat emission routine, leveraging the underlying network channel's {@code tell} pattern.
+     */
     public static class SendHeartBeat implements Serializable {
     }
 
+    /**
+     * A message broadcast to all participating nodes by any replica that detects a coordinator timeout. This explicitly triggers the election phase by building upon the pre-existing {@code ElectionStarted} message.
+     */
     public static class CoordinatorCrashed implements Serializable {
         public final int currentCoordinator;
 
@@ -371,6 +380,9 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
+    /**
+     * An election token passed sequentially along the virtual ring during the consensus phase. Each replica appends its latest state metadata to this message, enabling the election of the most up-to-date coordinator based on the policy described later in this report.
+     */
     public static class Election implements Serializable {
         public final Map<Integer, LastUpdate> updates;
         public final int toReplica;
@@ -397,6 +409,9 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
+    /**
+     * A metadata message specifying the latest update processed by a replica, containing both the epoch and the sequence number. This keeps election messages lightweight by avoiding the transmission of the actual data payload.
+     */
     public static class LastUpdate implements Serializable, Comparable<LastUpdate> {
         public final int epoch;
         public final int epochSEQN;
@@ -435,6 +450,9 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
+    /**
+     * An acknowledgment message required by the ring-based routing protocol, sent to confirm that the election token has been successfully handed over to the next successor.
+     */
     public static class ElectionACK implements Serializable {
         @Override
         public String toString() {
@@ -442,6 +460,9 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
+    /**
+     * A timer message indicating that the election process has failed to converge within the expected timeframe. This serves a dual purpose: verifying if the initial detector started the election promptly, and monitoring whether the prospective coordinator issues the subsequent synchronization message in time.
+     */
     public static class ElectionTimeout implements Serializable {
         @Override
         public String toString() {
@@ -449,6 +470,9 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
+    /**
+     * A timeout message signaling that an expected {@code ElectionACK} was not received, indicating that the immediate successor in the ring has crashed.
+     */
     public static class ElectionACKTimeout implements Serializable {
         public final Election currentElection;
 
@@ -531,6 +555,9 @@ public abstract class AbstractReplica extends AbstractActor {
         }
     }
 
+    /**
+     * A state-transfer message dispatched by the newly elected coordinator to bring all operational replicas up to date by transmitting missed log entries and formally confirming its new coordinator status.
+     */
     public static class Synchronization implements Serializable {
         public final List<AppliedUpdate> updates;
         public final int newCoordinator;
