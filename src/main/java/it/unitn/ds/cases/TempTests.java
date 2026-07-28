@@ -21,13 +21,13 @@ public class TempTests extends AbstractCase {
                         Optional.of(replicas.get(1))),
                 "client1");
 
-        SendCrash(0, replicas.get(0), Type.Now, 0);
-        SendCrash(0, replicas.get(1), Type.Now, 0);
-        SendCrash(0, replicas.get(2), Type.Now, 0);
-
-        SendWrite(0, client, 6, 1, 10);
-
-        SendRead(4000, client, 5, 1);
+        SendWrite(0, client, 1, 1, 11);
+        SendWrite(0, client, 1, 1, 12);
+        SendWrite(0, client, 1, 1, 13);
+        SendWrite(0, client, 1, 1, 14);
+        SendWrite(0, client, 1, 1, 15);
+        SendWrite(0, client, 1, 1, 16);
+        SendWrite(0, client, 1, 1, 17);
 
         try {
             System.out.println(">>> Press ENTER to continue");

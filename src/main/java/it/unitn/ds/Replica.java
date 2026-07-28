@@ -19,8 +19,8 @@ public class Replica extends AbstractReplica {
     public static final int ELECTION_TIMEOUT_MULTIPLIER = 400;
     public static final int SYNCHRONIZAZION_TIMEOUT = 100;
     private static final int RESTORE_TIMEOUT_MS = 500;
-    public static final int REQUEST_FORWARD_TIMEOUT = 500;
-    public static final int WRITEOK_TIMEOUT = 500;
+    public static final int REQUEST_FORWARD_TIMEOUT = 1000;
+    public static final int WRITEOK_TIMEOUT = 1000;
 
     private boolean amICoordinator;
     private boolean isElectionFirstPhase;
@@ -51,7 +51,7 @@ public class Replica extends AbstractReplica {
     /**
      * Request received by a client that are yet to be forwarded to the coordinator
      */
-    private final Queue<Update> writeRequests;
+    private Queue<Update> writeRequests;
     private final List<List<Update>> coordinatorPendingRecovery;
     private final Stack<AppliedUpdate> history;
     /** Requests sent to the coordinator but not yet broadcast by it */
@@ -537,19 +537,21 @@ public class Replica extends AbstractReplica {
             retryRequests = false;
         }
 
-        Update nextUpdate;
         if (retryRequests) {
-            nextUpdate = pendingRequests.poll();
-            debug("Retrying pending request with ID: " + nextUpdate.printId());
-        } else {
-            if (writeRequests.isEmpty()) {
-                return;
-            }
+            Queue<Update> newQueue = new ArrayDeque<Update>();
+            newQueue.addAll(pendingRequests);
+            newQueue.addAll(writeRequests);
 
-            nextUpdate = writeRequests.poll();
-            pendingRequests.add(nextUpdate);
-            debug("Pending request with ID: " + nextUpdate.printId());
+            writeRequests = newQueue;
+            retryRequests = false;
         }
+
+        if (writeRequests.isEmpty()) {
+            return;
+        }
+
+        Update nextUpdate = writeRequests.poll();
+        pendingRequests.add(nextUpdate);
 
         debug("WRITE request (" + nextUpdate.request.index + "," + nextUpdate.request.value + ") from "
                 + nextUpdate.client.path().name() + ", sending to the coordinator");
@@ -917,7 +919,8 @@ public class Replica extends AbstractReplica {
     private void OnElectionStart(ElectionStarted electionStarted) {
         if (isElectionFirstPhase || hasCrashed)
             return;
-        // clear timeout in case this replica did not receive a crashcoordinator message before
+        // clear timeout in case this replica did not receive a crashcoordinator message
+        // before
         CancelTimeout(heartbeatExpireTimer);
         CancelTimeout(fowardTimeouts);
         CancelTimeout(writeokTimeouts);
