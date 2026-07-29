@@ -5,8 +5,10 @@ import java.util.Optional;
 
 import akka.actor.ActorRef;
 import it.unitn.ds.Client;
-import it.unitn.ds.AbstractReplica.Crash.Type;
 
+/**
+ * Class used for debugging purposes
+ */
 public class TempTests extends AbstractCase {
     public TempTests(int numReplicas, int coordinatorId) {
         super(numReplicas, coordinatorId);

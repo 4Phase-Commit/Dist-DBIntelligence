@@ -9,12 +9,11 @@ import akka.actor.ActorSystem;
 import it.unitn.ds.AbstractClient;
 import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.AbstractReplica.InitSystem;
-import it.unitn.ds.Client;
 import it.unitn.ds.Replica;
 
 /**
  * Class for modeling and running execution cases for the project.
- * Create a subclass that overrides the {@code run} method to create
+ * Create a subclass that overrides the {@code Execute} method to create
  * new cases.
  */
 public abstract class AbstractCase {

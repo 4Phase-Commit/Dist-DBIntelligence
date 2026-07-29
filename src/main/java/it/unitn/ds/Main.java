@@ -30,8 +30,8 @@ public class Main {
 
         // new CoordinatorCrashBeforeUpdate(5,1);
 
-        new TempTests(7, 0);
-        // new CorrectRW(7, 0);
+        // new TempTests(7, 0);
+        new CorrectRW(7, 0);
         // new AllWriteOkCrash(5, 0);
         // new CoordinatorCrashAfterSomeUpdate(7, 0);
         // new CoordinatorCrashAfterSomeWriteOk(7, 0);

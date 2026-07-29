@@ -43,8 +43,6 @@ public class CoordinatorCrashAfterSomeUpdate extends AbstractCase {
         ActorRef secondCoordinator = this.replicas.get(this.replicas.size() - 1);
 
         SendCrash(0, startingCoordinator, Type.Update, N_REPLICAS / 2 + 1);
-        // TODO: consider the update recovery from the previous operation in the crash
-        // conditions
         SendCrash(0, secondCoordinator, Type.Update, (N_REPLICAS - 1) / 2);
 
         SendWrite(1000, client, 1, 1, 100);
