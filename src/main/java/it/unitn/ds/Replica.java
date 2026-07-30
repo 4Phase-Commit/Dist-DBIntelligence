@@ -326,7 +326,7 @@ public class Replica extends AbstractReplica {
 
     public final Receive crashedReceive() {
         return createBaseReceiveBuilder()
-                .matchAny(a -> {
+                .matchAny(_ -> {
                 })
                 .build();
     }
@@ -349,7 +349,7 @@ public class Replica extends AbstractReplica {
                 .match(AbstractClient.ReadRequest.class, this::onReadRequest)
                 .match(AbstractClient.WriteRequest.class, this::onWriteRequest)
                 .match(UpdateRequest.class, this::onUpdateRequets)
-                .matchAny(a -> {
+                .matchAny(_ -> {
                 })
                 .build();
     }
@@ -538,7 +538,7 @@ public class Replica extends AbstractReplica {
         }
 
         if (retryRequests) {
-            Queue<Update> newQueue = new ArrayDeque<Update>();
+            Queue<Update> newQueue = new ArrayDeque<>();
             newQueue.addAll(pendingRequests);
             newQueue.addAll(writeRequests);
 
@@ -660,6 +660,7 @@ public class Replica extends AbstractReplica {
         Map<Integer, LastUpdate> newUpdates;
         if (!isElectionFirstPhase) { // im the second phase and I remove the updates of those that have crashed
                                      // (OPTIMIZATION)
+            log("Removing potential coordiantor entry");
             newUpdates = electionACKTimeout.currentElection.updates.entrySet().stream()
                     .filter(entry -> !entry.getKey().equals(crashedReplica))
                     .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue)); // immutable for

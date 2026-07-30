@@ -1,12 +1,9 @@
 
 package it.unitn.ds.cases;
 
-import java.io.IOException;
-import java.sql.ClientInfoStatus;
 import java.util.Optional;
 
 import akka.actor.ActorRef;
-import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.Client;
 import it.unitn.ds.AbstractReplica.Crash.Type;
 

@@ -78,7 +78,7 @@ public abstract class AbstractCase {
         try {
             System.out.println(">>> Press ENTER to continue");
             System.in.read();
-        } catch (IOException e) {
+        } catch (IOException _) {
         }
 
         system.terminate();

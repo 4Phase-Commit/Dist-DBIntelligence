@@ -39,16 +39,10 @@ public class CoordinatorCrashAfterSomeUpdate extends AbstractCase {
                 "client1");
 
         ActorRef startingCoordinator = this.replicas.get(STARTING_COORDINATOR_ID);
-        // Presumably the highest id will win in absence of newer writes
-        ActorRef secondCoordinator = this.replicas.get(this.replicas.size() - 1);
 
-        SendCrash(0, startingCoordinator, Type.Update, N_REPLICAS / 2 + 1);
-        SendCrash(0, secondCoordinator, Type.Update, (N_REPLICAS - 1) / 2);
+        SendCrash(0, startingCoordinator, Type.Update, N_REPLICAS / 2 + 2); // + 2 to also count the reception of the update on itself
 
         SendWrite(1000, client, 1, 1, 100);
-        SendRead(2000, client, 1, 1);
-
-        SendWrite(4000, client, 1, 1, 200);
-        SendRead(5000, client, 1, 1);
+        SendRead(4000, client, 1, 1);
     }
 }

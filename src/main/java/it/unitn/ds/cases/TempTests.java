@@ -1,6 +1,5 @@
 package it.unitn.ds.cases;
 
-import java.io.IOException;
 import java.util.Optional;
 
 import akka.actor.ActorRef;
@@ -30,13 +29,5 @@ public class TempTests extends AbstractCase {
         SendWrite(0, client, 1, 1, 15);
         SendWrite(0, client, 1, 1, 16);
         SendWrite(0, client, 1, 1, 17);
-
-        try {
-            System.out.println(">>> Press ENTER to continue");
-            System.in.read();
-        } catch (IOException e) {
-        }
-
-        system.terminate();
     }
 }

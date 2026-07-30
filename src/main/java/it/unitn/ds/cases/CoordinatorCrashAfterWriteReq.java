@@ -1,14 +1,11 @@
 package it.unitn.ds.cases;
 
-import java.io.IOException;
 import java.util.Optional;
 
 import akka.actor.ActorRef;
-import it.unitn.ds.AbstractReplica;
 import it.unitn.ds.Client;
 import it.unitn.ds.AbstractReplica.Crash.Type;
 
-// TODO: Do we want the replica to drop the update instead?
 /**
  * Case in which the coordinator crashes after receiving a write request
  * from a replica, before sending any update messages.

@@ -72,4 +72,4 @@ To implement this deferred crash detection, we designed a dedicated evaluation f
     \item Increment a message counter tracking the specific message type.
     \item Compare the counter against the threshold specified in the crash command.
 \end{enumerate}
-Once the incoming message count matches the crash trigger threshold, the replica executes an immediate crash.
+Once the incoming message count matches the crash trigger threshold, the replica executes an immediate crash. Note that this behavior also applies when broadcasting messages, thereby enabling the testing of more complex edge cases and specific failure scenarios.

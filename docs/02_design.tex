@@ -21,8 +21,6 @@ Beyond heartbeats, the coordinator is responsible for critical synchronization d
 \subsubsection{Update Protocol}
 To ensure updates are correctly replicated across the system we use a protocol that is similar to 2PC, but with some significant differences
 based on the assumptions we consider as true for this project.
-% In particular, knowing that we can count on a strict majority of replicas
-% always being correct and that nodes never recover from crashing were the two most impactful assumptions for our decisions.
 
 The protocol works as follows:
 \begin{enumerate}

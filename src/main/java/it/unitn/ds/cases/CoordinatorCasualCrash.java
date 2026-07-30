@@ -2,8 +2,6 @@ package it.unitn.ds.cases;
 
 import it.unitn.ds.AbstractReplica;
 
-import java.io.IOException;
-
 public class CoordinatorCasualCrash extends AbstractCase{
     public CoordinatorCasualCrash(int numReplicas, int coordinatorId) {
         super( numReplicas, coordinatorId);

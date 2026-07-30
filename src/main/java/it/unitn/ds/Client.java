@@ -12,8 +12,8 @@ import java.util.Optional;
 import java.util.Queue;
 
 public class Client extends AbstractClient {
-    private Map<ReadTimeout, Queue<Cancellable>> readTimeouts = new HashMap<>();
-    private Map<WriteTimeout, Queue<Cancellable>> writeTimeouts = new HashMap<>();
+    private final Map<ReadTimeout, Queue<Cancellable>> readTimeouts = new HashMap<>();
+    private final Map<WriteTimeout, Queue<Cancellable>> writeTimeouts = new HashMap<>();
 
     Client(long readTimeoutDelay, long writeTimeoutDelay, Optional<ActorRef> defaultTargetReplica,
             Optional<ActorRef> listener) {
@@ -78,12 +78,12 @@ public class Client extends AbstractClient {
         if (timeoutMessage instanceof ReadTimeout) {
             ReadTimeout rTimeout = (ReadTimeout) timeoutMessage;
             readTimeouts
-                    .computeIfAbsent(rTimeout, k -> new ArrayDeque<>())
+                    .computeIfAbsent(rTimeout, _ -> new ArrayDeque<>())
                     .add(timeout);
         } else if (timeoutMessage instanceof WriteTimeout) {
             WriteTimeout wTimeout = (WriteTimeout) timeoutMessage;
             writeTimeouts
-                    .computeIfAbsent(wTimeout, k -> new ArrayDeque<>())
+                    .computeIfAbsent(wTimeout, _ -> new ArrayDeque<>())
                     .add(timeout);
         } else {
             throw new IllegalArgumentException("Unknown timeout type: " + timeout.getClass());
@@ -91,8 +91,7 @@ public class Client extends AbstractClient {
     }
 
     private void cancelTimeout(ReadTimeout timeout) {
-        // Logger.debug("Read Timeout Queue: " +
-        // readTimeouts.values().stream().mapToInt(Queue::size).sum());
+//        debug("Read Timeout Queue: " + readTimeouts.values().stream().mapToInt(Queue::size).sum());
         Queue<Cancellable> queue = readTimeouts.get(timeout);
 
         if (queue != null) {
@@ -108,8 +107,7 @@ public class Client extends AbstractClient {
     }
 
     private void cancelTimeout(WriteTimeout timeout) {
-        // Logger.debug("Write Timeout Queue: " +
-        // writeTimeouts.values().stream().mapToInt(Queue::size).sum());
+        //debug("Write Timeout Queue: " + writeTimeouts.values().stream().mapToInt(Queue::size).sum());
         Queue<Cancellable> queue = writeTimeouts.get(timeout);
 
         if (queue != null) {
